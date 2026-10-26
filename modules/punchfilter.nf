@@ -1,27 +1,39 @@
-
 /**
- * Executes PUNCH graph filtering on a DIMACS or METIS graph.  
+ * Filters a graph using PUNCH and generates a contracted fragment graph.  
  *
  * **Inputs**  
  * `context`: Execution context, passed through unchanged.  
- * `graph`: Input graph file.  
- * `opts`: Map of filtering parameters.  
+ * `graph`: Input graph in DIMACS (`.gr`) or METIS format.  
+ * `opts`: Dictionary of filtering parameters.  
  *
- * **Parameters**  
- * Required: `U` (maximum fragment size).  
- * Optional: `alpha`, `f`, `coverage`, `cut_side`, `tau`.  
- * Flags: `arc_weights`, `verbose`.  
- * Omitted options use the executable's defaults.  
+ * **Required parameters (`opts`)**  
+ * `U`: Maximum fragment size.  
+ *
+ * **Optional parameters (`opts`)**  
+ * `alpha`: Natural cut parameter (default: 1.0).  
+ * `f`: Filtering parameter (default: 10).  
+ * `coverage`: Natural cut coverage (default: 2).  
+ * `cut_side`: `source`, `sink`, or `both` (default: source).  
+ * `tau`: Tiny cut threshold (default: 5).  
+ *
+ * **Optional switches (`opts`)**  
+ * `arc_weights`: Use DIMACS arc weights (ignored for METIS input).  
+ * `verbose`: Enable detailed filtering output.  
+ *
+ * Omitted optional parameters use the executable's defaults.  
+ * All three output files are always generated.  
  *
  * **Outputs**  
- * `graph`: Contracted fragment graph (METIS).  
- * `mapping`: Original vertex-to-fragment mapping.  
- * `kept_edges`: List of retained edges.  
- * `log`: Combined stdout and stderr.  
+ * `graph`: Contracted fragment graph in METIS format (`fragments.graph`).  
+ * `mapping`: Original vertex-to-fragment mapping (`fragment_mapping.txt`).  
+ * `kept_edges`: List of retained edges (`kept_edges.txt`).  
+ * `log`: Combined stdout and stderr (`punch.log`).  
+ * All outputs retain the original `context`.  
  *
  * **Configuration**  
- * `params.punch_filter_path`: Path to the PUNCH executable.  
+ * `params.tools.punch_filter`: Path to the PUNCH executable.  
  */
+
 process PUNCH_FILTER {
     label 'filtering'
 
@@ -44,34 +56,29 @@ process PUNCH_FILTER {
     script:
     assert params.tools.punch_filter != null 
         : "Missing configuration: params.tools.punch_filter must be set to the path of the PUNCH executable"
+
     assert opts.U != null 
         : "PUNCH requires parameter U"
 
-    // Optional parameters
-    def alpha       = opts.alpha != null ? "--alpha ${opts.alpha}" : ''
-    def f           = opts.f != null ? "--f ${opts.f}" : ''
-    def coverage    = opts.coverage != null ? "--coverage ${opts.coverage}" : ''
-    def cutSide     = opts.cut_side != null ? "--cut-side ${opts.cut_side}" : ''
-    def tau         = opts.tau != null ? "--tau ${opts.tau}" : ''
+    def command = [
+        "\"${params.tools.punch_filter}\"",
+        "--graph \"${graph}\"",
+        "--U ${opts.U}",
+        '--dump-fragment-graph fragments.graph',
+        '--dump-partition fragment_mapping.txt',
+        '--dump-kept-edges kept_edges.txt',
+    ]
 
-    // Boolean command-line switches
-    def arcWeights = opts.arc_weights ? '--arc-weights' : ''
-    def verbose = opts.verbose ? '--verbose' : ''
+    if (opts.alpha != null)     command << "--alpha ${opts.alpha}"
+    if (opts.f != null)         command << "--f ${opts.f}"
+    if (opts.coverage != null)  command << "--coverage ${opts.coverage}"
+    if (opts.cut_side != null)  command << "--cut-side ${opts.cut_side}"
+    if (opts.tau != null)       command << "--tau ${opts.tau}"
 
-    """
-    "${params.tools.punch_filter}" \
-        --graph "${graph}" \
-        --U ${opts.U} \
-        ${alpha} \
-        ${f} \
-        ${coverage} \
-        ${cutSide} \
-        ${tau} \
-        ${arcWeights} \
-        ${verbose} \
-        --dump-fragment-graph fragments.graph \
-        --dump-partition fragment_mapping.txt \
-        --dump-kept-edges kept_edges.txt \
-        > punch.log 2>&1
-    """
+    if (opts.arc_weights == true)   command << '--arc-weights'
+    if (opts.verbose == true)       command << '--verbose'
+
+    command << "> punch.log 2>&1"
+
+    return command.join(' \\\n')
 }

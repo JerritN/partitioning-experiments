@@ -135,18 +135,18 @@ process MT_KAHYPAR {
     def command_line = command.join(' \\\n')
 
     """
-    mkdir -p partitions
+mkdir -p partitions
 
-    ${command_line}
+${command_line}
 
-    shopt -s nullglob
-    files=(partitions/*)
+shopt -s nullglob
+files=(partitions/*)
 
-    if [ "\${#files[@]}" -ne 1 ] || [ ! -f "\${files[0]}" ]; then
-        echo "Expected exactly one partition file" >&2
-        exit 1
-    fi
+if [ "\${#files[@]}" -ne 1 ] || [ ! -f "\${files[0]}" ]; then
+    echo "Expected exactly one partition file" >&2
+    exit 1
+fi
 
-    mv "\${files[0]}" partition.txt
+mv "\${files[0]}" partition.txt
     """
 }

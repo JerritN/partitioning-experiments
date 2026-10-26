@@ -1,7 +1,7 @@
-include { PUNCH_FILTER } from '../modules/punchfilter.nf'
+include { PUNCH_FILTER } from '../modules/punch_filter.nf'
 
 params {
-    source_path = "${env('HOME')}/Programming/data/belgium.osm.graph"
+    source_path = "${params.data_path}/belgium.osm.graph"
     U = 1000
 }
 

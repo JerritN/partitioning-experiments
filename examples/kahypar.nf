@@ -1,7 +1,7 @@
 include { MT_KAHYPAR } from '../modules/mt_kahypar'
 
 params {
-    source_path = "${env('HOME')}/Programming/data/belgium.osm.graph"
+    source_path = "${params.data_path}/belgium.osm.graph"
 }
 
 workflow {

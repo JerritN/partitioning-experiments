@@ -2,6 +2,7 @@
 include { GIT_CHECKOUT } from '../modules/git_checkout.nf'
 include { CMAKE_BUILD } from '../modules/cmake_build.nf'
 include { PUNCH_FILTER } from '../modules/punch_filter.nf'
+include { BUILD_CMAKE_PROJECT } from '../subworkflows/build_cmake_project.nf'
 
 params {
     graph: String = "${params.project_path}/data/belgium.osm.graph"
@@ -17,70 +18,42 @@ workflow {
     main:
     def repository = "${params.project_path}/mt-kahypar"
 
-    // Resolve HEAD before creating the Nextflow task.
-    def commit = params.commit
-
-    if (commit == null) {
-        def git = [
-            'git', '-C', repository.toString(), 'rev-parse', 'HEAD'
-        ].execute()
-
-        def stdout = new StringBuffer()
-        def stderr = new StringBuffer()
-        git.consumeProcessOutput(stdout, stderr)
-
-        assert git.waitFor() == 0 :
-            "Could not resolve HEAD: ${stderr}"
-
-        commit = stdout.toString().trim()
-    }
-
-    assert commit ==~ /(?i)[0-9a-f]{40,64}/ :
-        "Expected a full Git commit hash"
-
-    // 1. Obtain the selected source revision.
-    GIT_CHECKOUT(
-        tuple(
-            [commit: commit],
-            repository,
-            commit
-        )
+    // 2. Configure and compile PunchFilter.
+    def commit = GitUtils.resolveCommit(
+        repository,
+        params.commit
     )
 
-    // 2. Configure and compile PunchFilter.
+    def source = tuple(
+        [commit: commit],
+        repository,
+        commit
+    )
+
     def buildOpts = [
         preset: params.cmake_preset,
         target: 'PunchFilter',
         binary: params.mt_kahypar.punch_filter_binary,
-        threads: 8,
-        cache_mode: true
+        threads: 8
     ]
 
-    def buildInputs = GIT_CHECKOUT.out.source.map {
-        context, source ->
-            tuple(context, source, buildOpts)
-    }
-
-    CMAKE_BUILD(buildInputs)
+    BUILD_CMAKE_PROJECT(
+        source,
+        channel.value(buildOpts)
+    )
 
     // 3. Run PUNCH with the compiled executable.
-    def graph = file(params.graph, checkIfExists: true)
+    def graphFile = file(params.graph, checkIfExists: true)
+    def punchOpts = [U: params.U]
 
-    def punchOpts = [
-        U: params.U
-    ]
-
-    def punchInputs = CMAKE_BUILD.out.binary.map {
+    def punchInputs = BUILD_CMAKE_PROJECT.out.binaries.map {
         context, binaries ->
-
-            def executable = CollectionUtils
-                .asList(binaries)
-                .find { file -> file.name == 'PunchFilter' }
-
-            assert executable != null :
-                "PunchFilter executable not found"
-
-            tuple(context, executable, graph, punchOpts)
+            tuple(
+                context,
+                CollectionUtils.findFile(binaries, 'PunchFilter'),
+                graphFile,
+                punchOpts
+            )
     }
 
     PUNCH_FILTER(punchInputs)

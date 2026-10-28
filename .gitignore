@@ -1,7 +1,7 @@
 .vscode/
 .nextflow/
 
-work/
+.work/
 results/
 
 /machine.config

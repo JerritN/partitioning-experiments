@@ -38,7 +38,10 @@ process PUNCH_FILTER {
     label 'filtering'
 
     input:
-    tuple val(context), path(graph), val(opts)
+    tuple val(context),
+        path(executable),
+        path(graph),
+        val(opts)
 
     output:
     tuple val(context), path('fragments.graph'),
@@ -54,31 +57,25 @@ process PUNCH_FILTER {
         emit: log
 
     script:
-    assert params.tools.punch_filter != null 
-        : "Missing configuration: params.tools.punch_filter must be set to the path of the PUNCH executable"
-
     assert opts.U != null 
         : "PUNCH requires parameter U"
 
-    def command = [
-        "\"${params.tools.punch_filter}\"",
-        "--graph \"${graph}\"",
-        "--U ${opts.U}",
-        '--dump-fragment-graph fragments.graph',
-        '--dump-partition fragment_mapping.txt',
-        '--dump-kept-edges kept_edges.txt',
-    ]
+    def command = new CommandBuilder("./${executable}")
+        .add('--graph', graph)
+        .add('--U', opts.U)
+        .add('--dump-fragment-graph', 'fragments.graph')
+        .add('--dump-partition', 'fragment_mapping.txt')
+        .add('--dump-kept-edges', 'kept_edges.txt')
+        .addIf(opts.alpha != null, '--alpha', opts.alpha)
+        .addIf(opts.f != null, '--f', opts.f)
+        .addIf(opts.coverage != null, '--coverage', opts.coverage)
+        .addIf(opts.cut_side != null, '--cut-side', opts.cut_side)
+        .addIf(opts.tau != null, '--tau', opts.tau)
+        .addIf(opts.arc_weights == true, '--arc-weights')
+        .addIf(opts.verbose == true, '--verbose')
 
-    if (opts.alpha != null)     command << "--alpha ${opts.alpha}"
-    if (opts.f != null)         command << "--f ${opts.f}"
-    if (opts.coverage != null)  command << "--coverage ${opts.coverage}"
-    if (opts.cut_side != null)  command << "--cut-side ${opts.cut_side}"
-    if (opts.tau != null)       command << "--tau ${opts.tau}"
+    def script = new ScriptBuilder()
+        .addCommand(command, 'punch.log', true)
 
-    if (opts.arc_weights == true)   command << '--arc-weights'
-    if (opts.verbose == true)       command << '--verbose'
-
-    command << "> punch.log 2>&1"
-
-    return command.join(' \\\n')
+    return script.build()
 }

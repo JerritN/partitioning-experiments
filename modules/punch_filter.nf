@@ -3,8 +3,9 @@
  *
  * **Inputs**  
  * `context`: Execution context, passed through unchanged.  
+ * `executable`: Path to the PUNCH executable, either prebuilt or produced by a build process.  
  * `graph`: Input graph in DIMACS (`.gr`) or METIS format.  
- * `opts`: Dictionary of filtering parameters.  
+ * `opts`: Map of filtering parameters.  
  *
  * **Required parameters (`opts`)**  
  * `U`: Maximum fragment size.  
@@ -21,7 +22,7 @@
  * `verbose`: Enable detailed filtering output.  
  *
  * Omitted optional parameters use the executable's defaults.  
- * All three output files are always generated.  
+ * All four output files are always generated.  
  *
  * **Outputs**  
  * `graph`: Contracted fragment graph in METIS format (`fragments.graph`).  
@@ -30,10 +31,10 @@
  * `log`: Combined stdout and stderr (`punch.log`).  
  * All outputs retain the original `context`.  
  *
- * **Configuration**  
- * `params.tools.punch_filter`: Path to the PUNCH executable.  
+ * **Requirements**  
+ * The supplied executable must be compatible with the execution environment.  
+ * Nextflow stages the executable and input graph into the task directory.  
  */
-
 process PUNCH_FILTER {
     label 'filtering'
 

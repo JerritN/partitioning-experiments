@@ -97,12 +97,16 @@ process MT_KAHYPAR {
     def script = new ScriptBuilder()
         .addLine('mkdir -p partitions')
         .addCommand(command, 'mt_kahypar.log', true)
+        
         .addLine('shopt -s nullglob')
         .addLine('files=(partitions/*)')
+
+        // Check that exactly one partition file was generated
         .addLine('if [ "${#files[@]}" -ne 1 ] || [ ! -f "${files[0]}" ]; then')
         .addLine('    echo "Expected exactly one partition file" >&2')
         .addLine('    exit 1')
         .addLine('fi')
+
         .addLine('mv "${files[0]}" partition.txt')
 
     return script.build()

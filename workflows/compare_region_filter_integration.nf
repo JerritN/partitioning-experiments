@@ -8,8 +8,10 @@ params {
     repository: String = "${params.project_path}/mt-kahypar"
     kahypar_commit: String = "085bdae"
     region_filter_commit: String = "7467201"
+    build_threads: Integer = 8
     graph_dir: String = "${params.project_path}/data"
     region_filter_u: Integer = 1000
+    mt_kahypar_threads: Integer = 8
     mt_kahypar_blocks: Integer = 8
     mt_kahypar_epsilon: Float = 0.03
     mt_kahypar_objective: String = "cut"
@@ -40,13 +42,13 @@ workflow {
         preset: 'minimal',
         target: 'MtKaHyPar',
         binary: params.mt_kahypar.mt_kahypar_binary,
-        threads: 8
+        threads: params.build_threads
     ]
     def regionFilterBuildOpts = [
         preset: 'minimal',
         target: 'RegionFilter',
         binary: params.mt_kahypar.region_filter_binary,
-        threads: 8
+        threads: params.build_threads
     ]
     def buildOpts = [
         kahypar: kahyparBuildOpts,
@@ -99,6 +101,7 @@ workflow {
     def sharedKahyparOpts = [
         file_format: 'metis',
         edge_metadata_type: 'natural_edge',
+        threads: params.mt_kahypar_threads,
         blocks: params.mt_kahypar_blocks,
         epsilon: params.mt_kahypar_epsilon,
         objective: params.mt_kahypar_objective,

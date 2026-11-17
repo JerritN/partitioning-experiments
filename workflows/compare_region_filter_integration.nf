@@ -9,7 +9,11 @@ params {
     kahypar_commit: String = "085bdae"
     region_filter_commit: String = "7467201"
     graph_dir: String = "${params.project_path}/data"
-    U: Integer = 1000
+    region_filter_u: Integer = 1000
+    mt_kahypar_blocks: Integer = 8
+    mt_kahypar_epsilon: Float = 0.03
+    mt_kahypar_objective: String = "cut"
+    mt_kahypar_preset_type: String = "default"
 }
 
 workflow {
@@ -74,7 +78,7 @@ workflow {
         
     // 4. Run RegionFilter on each graph file
     def regionFilterOpts = channel.value([
-        U: params.U
+        U: params.region_filter_u
     ])
     
     def regionFilterInputs = graphs
@@ -95,10 +99,10 @@ workflow {
     def sharedKahyparOpts = [
         file_format: 'metis',
         edge_metadata_type: 'natural_edge',
-        blocks: params.mt_kahypar.blocks,
-        epsilon: params.mt_kahypar.epsilon,
-        objective: params.mt_kahypar.objective,
-        preset_type: params.mt_kahypar.preset_type,
+        blocks: params.mt_kahypar_blocks,
+        epsilon: params.mt_kahypar_epsilon,
+        objective: params.mt_kahypar_objective,
+        preset_type: params.mt_kahypar_preset_type,
     ]
     def ratingOpts = channel.fromList([
         [c_rating_edge_metadata: 'ignore'],

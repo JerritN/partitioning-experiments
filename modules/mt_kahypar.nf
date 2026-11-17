@@ -8,6 +8,7 @@
  * `executable`: Mt-KaHyPar executable, prebuilt or supplied by a build process.  
  * `graph`: Input graph or hypergraph file.  
  * `initial_partition`: Optional initial partition or fragment mapping (`[]` if omitted).  
+ * `edge_metadata`: Optional edge metadata file (`[]` if omitted).
  * `opts`: Dictionary of partitioning parameters.  
  *
  * **Required parameters (`opts`)**  
@@ -23,6 +24,8 @@
  * `num_vcycles`: Number of V-cycles.  
  * `initial_partition_relax_on_stall`: Relax fragment restrictions on stall.  
  * `initial_partition_vcycle_fragments`: Restrict coarsening during V-cycles.  
+ * `edge_metadata_type`: Type of edge metadata.
+ * `c_rating_edge_metadata`: rating policy for edge metadata.
  *
  * **Optional switches (`opts`)**  
  * `allow_empty_blocks`, `quiet`, `verbose`,  
@@ -47,6 +50,7 @@ process MT_KAHYPAR {
         path(executable),
         path(graph), 
         path(initial_partition),
+        path(edge_metadata),
         val(opts)
 
     output:
@@ -73,9 +77,12 @@ process MT_KAHYPAR {
         .add("--write-partition-file")
         .add("--partition-output-folder", "partitions")
         .addIf(initial_partition, "--initial-partition", initial_partition)
+        .addIf(edge_metadata, "--edge-metadata", edge_metadata)
         .addIf(opts.seed != null, "--seed", opts.seed)
         .addIf(opts.file_format != null, "--file-format", opts.file_format)
         .addIf(opts.num_vcycles != null, "--num-vcycles", opts.num_vcycles)
+        .addIf(opts.edge_metadata_type != null, "--edge-metadata-type", opts.edge_metadata_type)
+        .addIf(opts.c_rating_edge_metadata != null, "--c-rating-edge-metadata", opts.c_rating_edge_metadata)
         .addIf(opts.allow_empty_blocks == true, "--allow-empty-blocks")
         .addIf(opts.quiet == true, "--quiet")
         .addIf(opts.verbose == true, "--verbose")

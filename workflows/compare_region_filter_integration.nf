@@ -40,6 +40,9 @@ workflow {
     // 2. Build Mt-KaHyPar and RegionFilter from the checked-out sources
     def kahyparBuildOpts = [
         preset: 'minimal',
+        definitions: [
+            KAHYPAR_ENABLE_GRAPH_PARTITIONING_FEATURES: true
+        ],
         target: 'MtKaHyPar',
         binary: params.mt_kahypar.mt_kahypar_binary,
         threads: params.build_threads
@@ -159,8 +162,7 @@ output {
     kahypar_results {
         mode 'copy'
         path { context, file ->
-            def rating = context.kahyparOpts.c_rating_edge_metadata
-            file >> "${context.graph}/${rating}/${file.name}"
+            file >> "${context.graph}/${context.kahyparOpts.c_rating_edge_metadata}/${file.name}"
         }
     }
 }

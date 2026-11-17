@@ -35,7 +35,7 @@ workflow {
     def kahyparBuildOpts = [
         preset: 'minimal',
         target: 'MtKaHyPar',
-        binary: params.mt_kahypar.binary,
+        binary: params.mt_kahypar.mt_kahypar_binary,
         threads: 8
     ]
     def regionFilterBuildOpts = [
@@ -93,6 +93,7 @@ workflow {
 
     // 6. Run Mt-KaHyPar on the natural edges
     def sharedKahyparOpts = [
+        file_format: 'metis',
         edge_metadata_type: 'natural_edge',
         blocks: params.mt_kahypar.blocks,
         epsilon: params.mt_kahypar.epsilon,

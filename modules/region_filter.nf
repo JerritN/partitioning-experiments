@@ -137,13 +137,14 @@ process REGION_FILTER {
         .addCommand(normalizeCuts)
 
     if (opts.dump_pairs != null) {
-        script.addLine('''for pair in raw_pairs/*; do
-    [ -f "$pair" ] || continue
-    awk 'BEGIN { OFMT = CONVFMT = "%.0f" }
-         $1 == "v" { $2 += 1 }
-         $1 == "e" { $2 += 1; $3 += 1 }
-         { print }' "$pair" > "pairs/${pair##*/}"
-done''')
+        script
+            .addLine('for pair in raw_pairs/*; do')
+            .addLine('    [ -f "$pair" ] || continue')
+            .addLine('    awk \'BEGIN { OFMT = CONVFMT = "%.0f" }')
+            .addLine('         $1 == "v" { $2 += 1 }')
+            .addLine('         $1 == "e" { $2 += 1; $3 += 1 }')
+            .addLine('         { print }\' "$pair" > "pairs/${pair##*/}"')
+            .addLine('done')
     }
 
     return script.build()

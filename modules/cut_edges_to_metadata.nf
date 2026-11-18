@@ -1,4 +1,4 @@
-process CUT_EDGES_TO_METADATA {
+process CUT_EDGES_TO_EDGE_PAIRS {
     label 'filtering'
 
     input:

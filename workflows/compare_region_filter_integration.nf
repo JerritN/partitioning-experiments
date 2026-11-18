@@ -1,7 +1,7 @@
 include { GIT_CHECKOUT } from '../modules/git_checkout.nf'
 include { CMAKE_BUILD } from '../modules/cmake_build.nf'
 include { REGION_FILTER } from '../modules/region_filter.nf'
-include { CUT_EDGES_TO_METADATA } from '../modules/cut_edges_to_metadata.nf'
+include { CUT_EDGES_TO_EDGE_PAIRS } from '../modules/cut_edges_to_metadata.nf'
 include { MT_KAHYPAR } from '../modules/mt_kahypar.nf'
 
 params {
@@ -97,8 +97,8 @@ workflow {
     def cutEdges = REGION_FILTER.out.cut_edges
 
     // 5. convert the cut edges to a format suitable for Mt-KaHyPar
-    CUT_EDGES_TO_METADATA(cutEdges)
-    def naturalEdges = CUT_EDGES_TO_METADATA.out.metadata
+    CUT_EDGES_TO_EDGE_PAIRS(cutEdges)
+    def naturalEdges = CUT_EDGES_TO_EDGE_PAIRS.out.metadata
 
     // 6. Run Mt-KaHyPar on the natural edges
     def sharedKahyparOpts = [

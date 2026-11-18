@@ -5,6 +5,11 @@ include { PUNCH_FILTER } from '../modules/punch_filter.nf'
 include { BUILD_CMAKE_PROJECT } from '../subworkflows/build_cmake_project.nf'
 
 params {
+    // Use with -resume; set a stage to false to rerun its tasks.
+    cache_git_checkout: Boolean = true
+    cache_cmake_build: Boolean = true
+    cache_punch_filter: Boolean = true
+
     graph: String = "${params.project_path}/data/belgium.osm.graph"
 
     // Optional; if omitted, use HEAD

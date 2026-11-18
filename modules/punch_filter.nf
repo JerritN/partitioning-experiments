@@ -37,6 +37,7 @@
  */
 process PUNCH_FILTER {
     label 'filtering'
+    cache params.get('cache_punch_filter', true)
 
     input:
     tuple val(context),

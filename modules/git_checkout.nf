@@ -16,6 +16,7 @@
  */
 process GIT_CHECKOUT {
     label 'source_preparation'
+    cache params.get('cache_git_checkout', true)
 
     input:
     tuple val(context), val(repository), val(commit)

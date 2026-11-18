@@ -31,6 +31,7 @@
  */
 process STREETVIZ {
     label 'visualization'
+    cache params.get('cache_streetviz', true)
 
     input:
     tuple val(context),

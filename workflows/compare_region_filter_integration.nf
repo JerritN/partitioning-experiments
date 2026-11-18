@@ -8,6 +8,13 @@ include { VERTEX_GROUPS_TO_NODE_MARKS } from '../modules/vertex_groups_to_node_m
 include { STREETVIZ } from '../modules/streetviz.nf'
 
 params {
+    // Use with -resume; set a stage to false to rerun its tasks.
+    cache_git_checkout: Boolean = true
+    cache_cmake_build: Boolean = true
+    cache_region_filter: Boolean = true
+    cache_mt_kahypar: Boolean = true
+    cache_streetviz: Boolean = true
+
     repository: String = "${params.project_path}/mt-kahypar"
     kahypar_commit: String = "085bdae"
     region_filter_commit: String = "7467201"

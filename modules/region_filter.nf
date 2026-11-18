@@ -49,6 +49,7 @@
  */
 process REGION_FILTER {
     label 'filtering'
+    cache params.get('cache_region_filter', true)
 
     input:
     tuple val(context),

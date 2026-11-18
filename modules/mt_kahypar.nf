@@ -42,6 +42,7 @@
 
 process MT_KAHYPAR {
     label 'partitioning'
+    cache params.get('cache_mt_kahypar', true)
 
     cpus { opts.threads ?: 1 }
 

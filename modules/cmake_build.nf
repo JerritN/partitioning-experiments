@@ -15,7 +15,6 @@
  *
  * **Execution options (`opts`)**  
  * `threads`: Number of parallel build jobs (default: 1).  
- * `cache_mode`: Nextflow cache policy (`true`, `false`, `deep`, `lenient`; default: true).  
  *
  * **Outputs**  
  * `build`: Complete CMake build directory.  
@@ -29,10 +28,9 @@
  */
 process CMAKE_BUILD {
     label 'compilation'
+    cache params.get('cache_cmake_build', true)
 
     cpus { opts.threads ?: 1 }
-
-    cache { opts.cache_mode != null ? opts.cache_mode : true }
 
     input:
     tuple val(context), path(source), val(opts)

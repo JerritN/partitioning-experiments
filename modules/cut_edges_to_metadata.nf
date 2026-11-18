@@ -10,7 +10,7 @@ process CUT_EDGES_TO_EDGE_PAIRS {
 
     script:
     def command = new CommandBuilder('awk')
-        .add('{print $1 + 1, $2 + 1}', cut_edges)
+        .add('{print $1, $2}', cut_edges)
         .addUnwrapped('>')
         .add('natural_edges_metadata.txt')
 

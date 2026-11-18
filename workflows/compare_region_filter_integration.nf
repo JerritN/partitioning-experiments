@@ -4,7 +4,7 @@ include { REGION_FILTER } from '../modules/region_filter.nf'
 include { STRIP_TO_EDGE_PAIRS } from '../modules/strip_to_edge_pairs.nf'
 include { MT_KAHYPAR } from '../modules/mt_kahypar.nf'
 include { EDGE_PAIRS_TO_EDGE_MARKS } from '../modules/edge_pairs_to_edge_marks.nf'
-include { VEREX_GROUPS_TO_NODE_MARKS as VERTEX_GROUPS_TO_NODE_MARKS } from '../modules/vertex_groups_to_node_marks.nf'
+include { VERTEX_GROUPS_TO_NODE_MARKS } from '../modules/vertex_groups_to_node_marks.nf'
 include { STREETVIZ } from '../modules/streetviz.nf'
 
 params {

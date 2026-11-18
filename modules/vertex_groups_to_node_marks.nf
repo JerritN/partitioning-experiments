@@ -1,4 +1,4 @@
-process VEREX_GROUPS_TO_NODE_MARKS {
+process VERTEX_GROUPS_TO_NODE_MARKS {
     label 'visualization'
 
     input:

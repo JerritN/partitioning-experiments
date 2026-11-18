@@ -3,6 +3,9 @@ include { CMAKE_BUILD } from '../modules/cmake_build.nf'
 include { REGION_FILTER } from '../modules/region_filter.nf'
 include { STRIP_TO_EDGE_PAIRS } from '../modules/strip_to_edge_pairs.nf'
 include { MT_KAHYPAR } from '../modules/mt_kahypar.nf'
+include { EDGE_PAIRS_TO_EDGE_MARKS } from '../modules/edge_pairs_to_edge_marks.nf'
+include { VEREX_GROUPS_TO_NODE_MARKS as VERTEX_GROUPS_TO_NODE_MARKS } from '../modules/vertex_groups_to_node_marks.nf'
+include { STREETVIZ } from '../modules/streetviz.nf'
 
 params {
     repository: String = "${params.project_path}/mt-kahypar"
@@ -135,12 +138,33 @@ workflow {
     
     MT_KAHYPAR(kahyparInputs)
 
-    // 7. Publish results
+    // 7. Render each partition with the natural edges from its RegionFilter run
+    EDGE_PAIRS_TO_EDGE_MARKS(naturalEdges)
+    VERTEX_GROUPS_TO_NODE_MARKS(MT_KAHYPAR.out.partition)
+
+    def edgeMarks = EDGE_PAIRS_TO_EDGE_MARKS.out.metadata.map { context, marks ->
+        tuple(context.graphFile, context.regionFilterOpts, marks)
+    }
+    def nodeMarks = VERTEX_GROUPS_TO_NODE_MARKS.out.metadata.map { context, marks ->
+        tuple(context.graphFile, context.regionFilterOpts, context, marks)
+    }
+    def renderInputs = nodeMarks
+        .combine(edgeMarks, by: [0, 1])
+        .map { graph, _filterOpts, context, nodes, edges ->
+            def xyz = graph.resolveSibling("${graph.baseName}.xyz")
+            def coords = xyz.exists() ? xyz : file("${xyz}.bz2", checkIfExists: true)
+            tuple(context, graph, coords, edges, nodes, [], [coord_format: 'dimacs10-osm'])
+        }
+
+    STREETVIZ(renderInputs)
+
+    // 8. Publish results
     publish:
     region_log = REGION_FILTER.out.log
     natural_edges = naturalEdges
     kahypar_results = MT_KAHYPAR.out.partition.mix(
         MT_KAHYPAR.out.log,
+        STREETVIZ.out.report,
     )
 }
 

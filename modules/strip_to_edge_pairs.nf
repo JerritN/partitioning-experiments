@@ -1,18 +1,18 @@
-process CUT_EDGES_TO_EDGE_PAIRS {
+process STRIP_TO_EDGE_PAIRS {
     label 'filtering'
 
     input:
-    tuple val(context), path(cut_edges)
+    tuple val(context), path(edges)
 
     output:
-    tuple val(context), path('natural_edges_metadata.txt'),
+    tuple val(context), path('edge_pairs.txt'),
         emit: metadata
 
     script:
     def command = new CommandBuilder('awk')
-        .add('{print $1, $2}', cut_edges)
+        .add('{print $1, $2}', edges)
         .addUnwrapped('>')
-        .add('natural_edges_metadata.txt')
+        .add('edge_pairs.txt')
 
     return new ScriptBuilder()
         .addCommand(command)

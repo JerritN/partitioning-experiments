@@ -1,22 +1,33 @@
 /**
- * Renders a geographic METIS graph with optional edge and node groups.
- * The task environment must provide the streetviz command on PATH.
+ * Renders a geographic graph using Streetviz.  
  *
- * Inputs, in tuple order:
- *   context     Execution context, passed through unchanged.
- *   graph       Unweighted, undirected METIS graph.
- *   coords      Coordinate rows in vertex order.
- *   edge_marks  Optional rows of u v group.
- *   node_marks  Optional rows of vertex group.
- *   groups      Optional group labels and colors in JSON.
- *   opts        Rendering options. Pass [] for each omitted file input.
+ * **Inputs**  
+ * `context`: Execution context, passed through unchanged.  
+ * `graph`: Input graph in unweighted, undirected METIS format.  
+ * `coords`: Input coordinates in vertex order.  
+ * `edge_marks`: Optional edge groups, one `u v group` per line (`[]` if omitted).  
+ * `node_marks`: Optional node groups, one `vertex group` per line (`[]` if omitted).  
+ * `groups`: Optional group labels and colors in JSON format (`[]` if omitted).  
+ * `opts`: Map of rendering parameters.  
  *
- * Required option: coord_format (lonlat or dimacs10-osm).
- * Optional options: mark_id_base (0 or 1), basemap (osm, none or custom).
- * A custom basemap takes both tile_url and attribution.
- * Omitted options use Streetviz defaults.
+ * **Required parameters (`opts`)**  
+ * `coord_format`: Coordinate format, `lonlat` or `dimacs10-osm`.  
  *
- * Outputs: (context, map.html) and (context, streetviz.log).
+ * **Optional parameters (`opts`)**  
+ * `mark_id_base`: Vertex ID base in the marking files, `0` or `1` (default: 1).  
+ * `basemap`: Basemap type, `osm`, `none`, or `custom` (default: osm).  
+ * `tile_url`: HTTPS raster tile URL template, required for a custom basemap.  
+ * `attribution`: Tile provider attribution, required for a custom basemap.  
+ *
+ * Omitted optional parameters use the executable's defaults.  
+ *
+ * **Outputs**  
+ * `report`: Interactive HTML map (`map.html`).  
+ * `log`: Combined stdout and stderr (`streetviz.log`).  
+ * Both outputs retain the original `context`.  
+ *
+ * **Requirements**  
+ * The `streetviz` executable must be available on `PATH` in the execution environment.  
  */
 process STREETVIZ {
     label 'visualization'

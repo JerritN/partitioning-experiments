@@ -9,7 +9,7 @@ process TAKE_COLUMNS {
         emit: output
 
     script:
-    def columnsList = CollectionUtils.toList(columns)
+    def columnsList = CollectionUtils.asList(columns)
 
     assert columnsList.size() > 0 : "At least one column must be specified"
     assert columnsList.every { column -> column instanceof Integer } : "All columns must be integers"

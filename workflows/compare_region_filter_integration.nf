@@ -1,10 +1,10 @@
 include { GIT_CHECKOUT } from '../modules/git_checkout.nf'
 include { CMAKE_BUILD } from '../modules/cmake_build.nf'
 include { REGION_FILTER } from '../modules/region_filter.nf'
-include { STRIP_TO_EDGE_PAIRS } from '../modules/strip_to_edge_pairs.nf'
+include { TAKE_COLUMNS } from '../modules/take_columns.nf'
 include { MT_KAHYPAR } from '../modules/mt_kahypar.nf'
-include { EDGE_PAIRS_TO_EDGE_MARKS } from '../modules/edge_pairs_to_edge_marks.nf'
-include { VERTEX_GROUPS_TO_NODE_MARKS } from '../modules/vertex_groups_to_node_marks.nf'
+include { APPEND_TO_ROWS } from '../modules/append_to_rows.nf'
+include { INDEX_ROWS } from '../modules/index_rows.nf'
 include { STREETVIZ } from '../modules/streetviz.nf'
 
 params {
@@ -107,8 +107,8 @@ workflow {
     def cutEdges = REGION_FILTER.out.cut_edges
 
     // 5. convert the cut edges to a format suitable for Mt-KaHyPar
-    STRIP_TO_EDGE_PAIRS(cutEdges)
-    def naturalEdges = STRIP_TO_EDGE_PAIRS.out.metadata
+    TAKE_COLUMNS(cutEdges, [1, 2])
+    def naturalEdges = TAKE_COLUMNS.out.output
 
     // 6. Run Mt-KaHyPar on the natural edges
     def sharedKahyparOpts = [
@@ -146,13 +146,13 @@ workflow {
     MT_KAHYPAR(kahyparInputs)
 
     // 7. Render each partition with the natural edges from its RegionFilter run
-    EDGE_PAIRS_TO_EDGE_MARKS(naturalEdges)
-    VERTEX_GROUPS_TO_NODE_MARKS(MT_KAHYPAR.out.partition)
-
-    def edgeMarks = EDGE_PAIRS_TO_EDGE_MARKS.out.metadata.map { context, marks ->
+    APPEND_TO_ROWS(naturalEdges, 0)
+    def edgeMarks = APPEND_TO_ROWS.out.metadata.map { context, marks ->
         tuple(context.graphFile, context.regionFilterOpts, marks)
     }
-    def nodeMarks = VERTEX_GROUPS_TO_NODE_MARKS.out.metadata.map { context, marks ->
+
+    INDEX_ROWS(MT_KAHYPAR.out.partition, 1)
+    def nodeMarks = INDEX_ROWS.out.output.map { context, marks ->
         tuple(context.graphFile, context.regionFilterOpts, context, marks)
     }
     def renderInputs = nodeMarks

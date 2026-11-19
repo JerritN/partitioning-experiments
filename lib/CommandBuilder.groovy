@@ -35,8 +35,6 @@ class CommandBuilder {
         assert parts.every { it != null } :
             "Command arguments must not be null"
 
-        def segments = parts.flatten().collect { it.toString() }
-
         commandParts << parts.collect {
             it.toString()
         }.join(' ')

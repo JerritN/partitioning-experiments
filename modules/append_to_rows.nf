@@ -2,7 +2,7 @@
 
 process APPEND_TO_ROWS {
     input:
-    tuple val(context), path(input_file)
+    tuple val(context), path(input_file, stageAs: 'input/*')
     val(value)
 
     output:

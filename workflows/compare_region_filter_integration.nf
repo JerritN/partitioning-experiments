@@ -1,11 +1,11 @@
-include { GIT_CHECKOUT } from '../modules/git_checkout.nf'
-include { CMAKE_BUILD } from '../modules/cmake_build.nf'
+include { BUILD_CMAKE_FROM_GIT } from '../subworkflows/build_cmake_from_git.nf'
+include { RENDER_GRAPH_REPORTS } from '../subworkflows/render_graph_reports.nf'
+include { REGION_ROUND_MARKS } from '../modules/region_round_marks.nf'
 include { REGION_FILTER } from '../modules/region_filter.nf'
-include { STRIP_TO_EDGE_PAIRS } from '../modules/strip_to_edge_pairs.nf'
+include { TAKE_COLUMNS } from '../modules/take_columns.nf'
 include { MT_KAHYPAR } from '../modules/mt_kahypar.nf'
-include { EDGE_PAIRS_TO_EDGE_MARKS } from '../modules/edge_pairs_to_edge_marks.nf'
-include { VERTEX_GROUPS_TO_NODE_MARKS } from '../modules/vertex_groups_to_node_marks.nf'
-include { STREETVIZ } from '../modules/streetviz.nf'
+include { APPEND_TO_ROWS } from '../modules/append_to_rows.nf'
+include { INDEX_ROWS } from '../modules/index_rows.nf'
 
 params {
     // Use with -resume; set a stage to false to rerun its tasks.
@@ -21,33 +21,19 @@ params {
     build_threads: Integer = 8
     graph_dir: String = "${params.project_path}/data"
     region_filter_u: Integer = 1000
+    region_filter_rounds: Integer = 1
     mt_kahypar_threads: Integer = 8
     mt_kahypar_blocks: Integer = 8
-    mt_kahypar_epsilon: Float = 0.03
+    mt_kahypar_epsilon: Float = 0.03f
     mt_kahypar_objective: String = "cut"
     mt_kahypar_preset_type: String = "default"
 }
 
 workflow {
     main:
-    // 1. Checkout the requested Git commits for Mt-KaHyPar and RegionFilter
-    def kahyparCommitHash = GitUtils.resolveCommit(
-        params.repository,
-        params.kahypar_commit
-    )
-    def regionFilterCommitHash = GitUtils.resolveCommit(
-        params.repository,
-        params.region_filter_commit
-    )
-    def checkoutInputs = channel.from([
-        tuple([commit: kahyparCommitHash, tool: 'kahypar'], params.repository, kahyparCommitHash),
-        tuple([commit: regionFilterCommitHash, tool: 'regionFilter'], params.repository, regionFilterCommitHash)
-    ])
+    assert params.region_filter_rounds in 1..31 : 'region_filter_rounds must be between 1 and 31 for per-round edge masks'
 
-    GIT_CHECKOUT(checkoutInputs)
-    def sources = GIT_CHECKOUT.out.source
-
-    // 2. Build Mt-KaHyPar and RegionFilter from the checked-out sources
+    // Build the two tools at their requested revisions.
     def kahyparBuildOpts = [
         preset: 'minimal',
         definitions: [
@@ -63,17 +49,12 @@ workflow {
         binary: params.mt_kahypar.region_filter_binary,
         threads: params.build_threads
     ]
-    def buildOpts = [
-        kahypar: kahyparBuildOpts,
-        regionFilter: regionFilterBuildOpts
-    ]
-    def buildInputs = sources.map { context, source ->
-        def opts = buildOpts[context.tool]
-        tuple(context + [build_opts: opts], source, opts)
-    }
-
-    CMAKE_BUILD(buildInputs)
-    def binaries = CMAKE_BUILD.out.binary.branch { context, _binary ->
+    def buildRequests = channel.of(
+        tuple([tool: 'kahypar'], params.repository, params.kahypar_commit, kahyparBuildOpts),
+        tuple([tool: 'regionFilter'], params.repository, params.region_filter_commit, regionFilterBuildOpts)
+    )
+    BUILD_CMAKE_FROM_GIT(buildRequests)
+    def binaries = BUILD_CMAKE_FROM_GIT.out.binary.branch { context, _binary ->
         kahypar: context.tool == 'kahypar'
         regionFilter: context.tool == 'regionFilter'
     }
@@ -82,7 +63,7 @@ workflow {
     def regionFilterExecutable = binaries.regionFilter
         .map { _context, binary -> binary }
 
-    // 3. Load graph files
+    // Load graph files
     def graphPath = file(params.graph_dir, checkIfExists: true)
     def graphs = channel.fromPath(
         graphPath.isDirectory() ? "${graphPath}/*.graph" : graphPath,
@@ -91,9 +72,10 @@ workflow {
         tuple([graph: graph.baseName, graphFile: graph], graph)
     }
         
-    // 4. Run RegionFilter on each graph file
+    // Run RegionFilter on each graph file
     def regionFilterOpts = channel.value([
-        U: params.region_filter_u
+        U: params.region_filter_u,
+        rounds: params.region_filter_rounds
     ])
     
     def regionFilterInputs = graphs
@@ -106,11 +88,11 @@ workflow {
     REGION_FILTER(regionFilterInputs)
     def cutEdges = REGION_FILTER.out.cut_edges
 
-    // 5. convert the cut edges to a format suitable for Mt-KaHyPar
-    STRIP_TO_EDGE_PAIRS(cutEdges)
-    def naturalEdges = STRIP_TO_EDGE_PAIRS.out.metadata
+    // convert the cut edges to a format suitable for Mt-KaHyPar
+    TAKE_COLUMNS(cutEdges, [1, 2])
+    def naturalEdges = TAKE_COLUMNS.out.output
 
-    // 6. Run Mt-KaHyPar on the natural edges
+    // Run Mt-KaHyPar on the natural edges
     def sharedKahyparOpts = [
         file_format: 'metis',
         edge_metadata_type: 'natural_edge',
@@ -145,34 +127,56 @@ workflow {
     
     MT_KAHYPAR(kahyparInputs)
 
-    // 7. Render each partition with the natural edges from its RegionFilter run
-    EDGE_PAIRS_TO_EDGE_MARKS(naturalEdges)
-    VERTEX_GROUPS_TO_NODE_MARKS(MT_KAHYPAR.out.partition)
-
-    def edgeMarks = EDGE_PAIRS_TO_EDGE_MARKS.out.metadata.map { context, marks ->
-        tuple(context.graphFile, context.regionFilterOpts, marks)
+    // Share graph coordinates across partition and RegionFilter round reports.
+    def reportGraphs = graphs.map { context, graph ->
+        def xyz = graph.resolveSibling("${graph.baseName}.xyz")
+        def coords = xyz.exists() ? xyz : file("${xyz}.bz2", checkIfExists: true)
+        tuple(context.graph, graph, coords)
     }
-    def nodeMarks = VERTEX_GROUPS_TO_NODE_MARKS.out.metadata.map { context, marks ->
-        tuple(context.graphFile, context.regionFilterOpts, context, marks)
+
+    APPEND_TO_ROWS(naturalEdges, 0)
+    def edgeMarks = APPEND_TO_ROWS.out.output.map { context, marks ->
+        tuple(context.graph, 'natural_edges', marks)
     }
-    def renderInputs = nodeMarks
-        .combine(edgeMarks, by: [0, 1])
-        .map { graph, _filterOpts, context, nodes, edges ->
-            def xyz = graph.resolveSibling("${graph.baseName}.xyz")
-            def coords = xyz.exists() ? xyz : file("${xyz}.bz2", checkIfExists: true)
-            tuple(context, graph, coords, edges, nodes, [], [coord_format: 'dimacs10-osm'])
-        }
+    INDEX_ROWS(MT_KAHYPAR.out.partition, 1)
+    def nodeMarks = INDEX_ROWS.out.output.map { context, marks ->
+        tuple(context.graph, context.kahyparOpts.c_rating_edge_metadata, marks)
+    }
+    def reportSpecs = ratingOpts.map { opts ->
+        def policy = opts.c_rating_edge_metadata
+        tuple(policy, policy, 'natural_edges')
+    }
+    // Region IDs occupy one column per round; the cut-edge mask uses the corresponding bit.
+    def rounds = channel.fromList((0..<params.region_filter_rounds).toList())
+    def roundInputs = REGION_FILTER.out.regions
+        .join(cutEdges, failOnDuplicate: true, failOnMismatch: true)
+        .combine(rounds)
+        .map { context, regions, cuts, round -> tuple(context, round, regions, cuts) }
+    REGION_ROUND_MARKS(roundInputs)
+    def roundNodeMarks = REGION_ROUND_MARKS.out.marks.map { context, round, edges, nodes ->
+        tuple(context.graph, round, nodes)
+    }
+    def roundEdgeMarks = REGION_ROUND_MARKS.out.marks.map { context, round, edges, nodes ->
+        tuple(context.graph, round, edges)
+    }
+    def roundSpecs = rounds.map { round -> tuple("region_filter/round-${round}", round, round) }
 
-    STREETVIZ(renderInputs)
+    RENDER_GRAPH_REPORTS(
+        reportGraphs,
+        nodeMarks.mix(roundNodeMarks),
+        edgeMarks.mix(roundEdgeMarks),
+        reportSpecs.mix(roundSpecs),
+        [coord_format: 'dimacs10-osm']
+    )
 
-    // 8. Publish results
+    // Publish results
     publish:
     region_log = REGION_FILTER.out.log
     natural_edges = naturalEdges
     kahypar_results = MT_KAHYPAR.out.partition.mix(
-        MT_KAHYPAR.out.log,
-        STREETVIZ.out.report,
+        MT_KAHYPAR.out.log
     )
+    graph_maps = RENDER_GRAPH_REPORTS.out.reports
 }
 
 output {
@@ -187,6 +191,13 @@ output {
         mode 'copy'
         path { context, file ->
             file >> "${context.graph}/natural_edges_metadata.txt"
+        }
+    }
+
+    graph_maps {
+        mode 'copy'
+        path { context, file ->
+            file >> "${context.graph}/${context.report}/${file.name}"
         }
     }
 

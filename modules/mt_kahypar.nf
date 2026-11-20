@@ -37,7 +37,8 @@
  * **Outputs**  
  * `partition`: Vertex-to-block mapping (`partition.txt`).  
  * `log`: Combined stdout and stderr (`mt_kahypar.log`).  
- * Both outputs retain the original `context`.  
+ * `result`: Machine-readable RESULT line (`result.txt`).  
+ * All outputs retain the original `context`.  
  */
 
 process MT_KAHYPAR {
@@ -61,6 +62,9 @@ process MT_KAHYPAR {
     tuple val(context), path('mt_kahypar.log'),
         emit: log
 
+    tuple val(context), path('result.txt'),
+        emit: result
+
     script:
 
     assert opts.blocks != null : "Mt-KaHyPar requires blocks"
@@ -75,6 +79,7 @@ process MT_KAHYPAR {
         .add("--epsilon", opts.epsilon)
         .add("--objective", opts.objective)
         .add("--preset-type", opts.preset_type)
+        .add("--sp-process")
         .add("--write-partition-file")
         .add("--partition-output-folder", "partitions")
         .addIf(initial_partition as boolean, "--initial-partition", initial_partition)
@@ -106,6 +111,11 @@ process MT_KAHYPAR {
         .addLine('mkdir -p partitions')
         .addCommand(command, 'mt_kahypar.log', true)
         
+        .addLine("awk '/^RESULT / { print; count++ } END { exit (count != 1) }' mt_kahypar.log > result.txt || {")
+        .addLine('    echo "Expected exactly one RESULT line in mt_kahypar.log" >&2')
+        .addLine('    exit 1')
+        .addLine('}')
+
         .addLine('shopt -s nullglob')
         .addLine('files=(partitions/*)')
 

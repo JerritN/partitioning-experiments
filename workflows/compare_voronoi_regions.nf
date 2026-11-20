@@ -1,6 +1,10 @@
 include { BUILD_CMAKE_FROM_GIT } from '../subworkflows/build_cmake_from_git.nf'
 include { RENDER_GRAPH_REPORTS } from '../subworkflows/render_graph_reports.nf'
-include { REGION_ROUND_MARKS } from '../modules/region_round_marks.nf'
+include { SPLIT_COLUMNS } from '../modules/split_columns.nf'
+include { INDEX_ROWS } from '../modules/index_rows.nf'
+include { FILTER_ROWS_BY_BIT } from '../modules/filter_rows_by_bit.nf'
+include { TAKE_COLUMNS } from '../modules/take_columns.nf'
+include { APPEND_TO_ROWS } from '../modules/append_to_rows.nf'
 include { REGION_FILTER } from '../modules/region_filter.nf'
 
 params {
@@ -65,18 +69,29 @@ workflow {
         tuple(context.graph, graph, coords)
     }
 
-    // Region IDs occupy one column per round; the cut-edge mask uses the corresponding bit.
-    def rounds = channel.fromList((0..<params.region_filter_rounds).toList())
-    def roundInputs = REGION_FILTER.out.regions
-        .join(cutEdges, failOnDuplicate: true, failOnMismatch: true)
-        .combine(rounds)
-        .map { context, regions, cuts, round -> tuple(context, round, regions, cuts) }
-    REGION_ROUND_MARKS(roundInputs)
-    def roundNodeMarks = REGION_ROUND_MARKS.out.marks.map { context, round, edges, nodes ->
-        tuple(context.graph, round, nodes)
+    // Column 1 holds the Voronoi cells for round 0.
+    SPLIT_COLUMNS(REGION_FILTER.out.regions)
+    def cells = SPLIT_COLUMNS.out.columns.flatMap { context, columns ->
+        assert columns.size() == params.region_filter_rounds : "Unexpected region column count for ${context.graph}"
+        columns.collect { column ->
+            tuple(context + [round: column.baseName.toInteger() - 1], column)
+        }
     }
-    def roundEdgeMarks = REGION_ROUND_MARKS.out.marks.map { context, round, edges, nodes ->
-        tuple(context.graph, round, edges)
+    INDEX_ROWS(cells, 1)
+    def roundNodeMarks = INDEX_ROWS.out.output.map { context, marks ->
+        tuple(context.graph, context.round, marks)
+    }
+
+    // Column 3 holds the round mask; bits 0 through 30 select retained cuts.
+    def rounds = channel.fromList((0..<params.region_filter_rounds).toList())
+    def cutsByRound = cutEdges.combine(rounds).map { context, cuts, round ->
+        tuple(context + [round: round], cuts, round)
+    }
+    FILTER_ROWS_BY_BIT(cutsByRound, 3)
+    TAKE_COLUMNS(FILTER_ROWS_BY_BIT.out.output, [1, 2])
+    APPEND_TO_ROWS(TAKE_COLUMNS.out.output, 0)
+    def roundEdgeMarks = APPEND_TO_ROWS.out.output.map { context, marks ->
+        tuple(context.graph, context.round, marks)
     }
     def roundSpecs = rounds.map { round -> tuple("round-${round}", round, round) }
 

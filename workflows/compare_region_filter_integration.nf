@@ -8,40 +8,42 @@ include { INDEX_ROWS } from '../modules/index_rows.nf'
 
 params {
     repository: String = "${params.project_path}/mt-kahypar"
-    build_threads: Integer = 8
+    build_threads: Integer
+    region_filter_revision: String
+    mt_kahypar_revision: String
     graph_dir: String = "${params.project_path}/data"
     region_filter_u: Integer = 1000
     mt_kahypar_threads: Integer = 8
     mt_kahypar_blocks: Integer = 8
     mt_kahypar_epsilon: Float = 0.03f
     mt_kahypar_objective: String = "cut"
-    mt_kahypar_preset_type: String = "default"
+    mt_kahypar_preset: String = "default"
 }
 
 workflow {
     main:
     // Build the two tools at their requested revisions.
     def kahyparBuildOpts = [
-        preset: params.mt_kahypar.preset,
+        preset: params.mt_kahypar.cmake_preset,
         definitions: params.mt_kahypar.definitions,
         target: params.mt_kahypar.target,
         binary: params.mt_kahypar.binary,
         threads: params.build_threads
     ]
     def regionFilterBuildOpts = [
-        preset: params.region_filter.preset,
+        preset: params.region_filter.cmake_preset,
         target: params.region_filter.target,
         binary: params.region_filter.binary,
         threads: params.build_threads
     ]
     def buildRequests = channel.of(
-        tuple('kahypar', params.repository, params.mt_kahypar.revision, kahyparBuildOpts),
-        tuple('regionFilter', params.repository, params.region_filter.revision, regionFilterBuildOpts)
+        tuple([tool: 'kahypar'], params.repository, params.mt_kahypar_revision, kahyparBuildOpts),
+        tuple([tool: 'regionFilter'], params.repository, params.region_filter_revision, regionFilterBuildOpts)
     )
     BUILD_CMAKE_FROM_GIT(buildRequests)
     def binaries = BUILD_CMAKE_FROM_GIT.out.binary.branch { context, _binary ->
-        kahypar: context == 'kahypar'
-        regionFilter: context == 'regionFilter'
+        kahypar: context.tool == 'kahypar'
+        regionFilter: context.tool == 'regionFilter'
     }
     def kahyparExecutable = binaries.kahypar
         .map { _context, binary -> binary }
@@ -84,7 +86,7 @@ workflow {
         blocks: params.mt_kahypar_blocks,
         epsilon: params.mt_kahypar_epsilon,
         objective: params.mt_kahypar_objective,
-        preset_type: params.mt_kahypar_preset_type,
+        preset_type: params.mt_kahypar_preset,
     ]
     def ratingOpts = channel.fromList([
         [c_rating_edge_metadata: 'ignore'],

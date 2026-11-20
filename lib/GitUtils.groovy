@@ -23,8 +23,8 @@ class GitUtils {
         def stdout = new StringBuffer()
         def stderr = new StringBuffer()
 
-        process.consumeProcessOutput(stdout, stderr)
-        def exitCode = process.waitFor()
+        process.waitForProcessOutput(stdout, stderr)
+        def exitCode = process.exitValue()
 
         if (exitCode != 0) {
             throw new IllegalArgumentException(

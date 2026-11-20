@@ -12,7 +12,7 @@ params {
     region_filter_revision: String
     mt_kahypar_revision: String
     graph_dir: String = "${params.project_path}/data"
-    region_filter_u: Integer = 1000
+    region_filter_k: Integer = 8
     mt_kahypar_threads: Integer = 8
     mt_kahypar_blocks: Integer = 8
     mt_kahypar_epsilon: Float = 0.03f
@@ -61,7 +61,7 @@ workflow {
         
     // Run RegionFilter on each graph file
     def regionFilterOpts = channel.value([
-        U: params.region_filter_u
+        k: params.region_filter_k
     ])
     
     def regionFilterInputs = graphs

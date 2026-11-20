@@ -1,7 +1,7 @@
 
 process TAKE_COLUMNS {
     input:
-    tuple val(context), path(input_file)
+    tuple val(context), path(input_file, stageAs: 'input/*')
     val(columns)
 
     output:

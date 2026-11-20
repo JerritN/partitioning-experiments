@@ -5,7 +5,6 @@ include { TAKE_COLUMNS } from '../modules/take_columns.nf'
 include { MT_KAHYPAR } from '../modules/mt_kahypar.nf'
 include { APPEND_TO_ROWS } from '../modules/append_to_rows.nf'
 include { INDEX_ROWS } from '../modules/index_rows.nf'
-include { IMPORT_SQLPLOT_RESULTS } from '../modules/import_sqlplot_results.nf'
 
 params {
     repository: String = "${params.project_path}/mt-kahypar"
@@ -14,7 +13,6 @@ params {
     mt_kahypar_revision: String
     graph_dir: String = "${params.project_path}/data"
     region_filter_k: Integer = 8
-    repetitions: Integer = 1
     mt_kahypar_threads: Integer = 8
     mt_kahypar_blocks: Integer = 8
     mt_kahypar_epsilon: Float = 0.03f
@@ -24,8 +22,6 @@ params {
 
 workflow {
     main:
-    assert params.repetitions >= 1 : 'repetitions must be positive'
-
     // Build the two tools at their requested revisions.
     def kahyparBuildOpts = [
         preset: params.mt_kahypar.cmake_preset,
@@ -50,9 +46,9 @@ workflow {
         regionFilter: context.tool == 'regionFilter'
     }
     def kahyparExecutable = binaries.kahypar
-        .map { context, binary -> tuple(context.commit, binary) }
+        .map { _context, binary -> binary }
     def regionFilterExecutable = binaries.regionFilter
-        .map { context, binary -> tuple(context.commit, binary) }
+        .map { _context, binary -> binary }
 
     // Load graph files
     def graphPath = file(params.graph_dir, checkIfExists: true)
@@ -71,8 +67,8 @@ workflow {
     def regionFilterInputs = graphs
         .combine(regionFilterExecutable)
         .combine(regionFilterOpts)
-        .map { context, graph, commit, executable, opts ->
-            tuple(context + [regionFilterOpts: opts, regionFilterCommit: commit], executable, graph, opts)
+        .map { context, graph, executable, opts ->
+            tuple(context + [regionFilterOpts: opts], executable, graph, opts)
         }
 
     REGION_FILTER(regionFilterInputs)
@@ -98,18 +94,15 @@ workflow {
         [c_rating_edge_metadata: 'natural_edge_contribute_zero'],
         [c_rating_edge_metadata: 'natural_edge_contribute_negative'],
     ])
-    def trials = ratingOpts.combine(channel.fromList((1..params.repetitions).toList()))
-        .map { ratingOpt, repetition ->
-            def policy = ratingOpt.c_rating_edge_metadata
-            def report = params.repetitions == 1 ? policy : "${policy}/run-${repetition}"
-            tuple(repetition, report, sharedKahyparOpts + ratingOpt)
-        }
+    def kahyparOpts = ratingOpts.map { ratingOpt ->
+        sharedKahyparOpts + ratingOpt
+    }
     def kahyparInputs = naturalEdges
         .combine(kahyparExecutable)
-        .combine(trials)
-        .map { context, metadata, commit, executable, repetition, report, opts ->
+        .combine(kahyparOpts)
+        .map { context, metadata, executable, opts ->
             tuple(
-                context + [kahyparOpts: opts, kahyparCommit: commit, repetition: repetition, report: report],
+                context + [kahyparOpts: opts],
                 executable,
                 context.graphFile,
                 [],
@@ -119,18 +112,6 @@ workflow {
         }
     
     MT_KAHYPAR(kahyparInputs)
-
-    def records = MT_KAHYPAR.out.result.map { context, result ->
-        SqlPlotResult.withFields(result.text, [
-            graph_id: context.graph,
-            rating_policy: context.kahyparOpts.c_rating_edge_metadata,
-            region_filter_k: context.regionFilterOpts.k,
-            repetition: context.repetition,
-            region_filter_commit: context.regionFilterCommit,
-            mt_kahypar_commit: context.kahyparCommit
-        ])
-    }.collectFile(name: 'runs.result', newLine: true, sort: true)
-    IMPORT_SQLPLOT_RESULTS(records, 'runs')
 
     // Render each partition with the natural edges from its RegionFilter run
     def reportGraphs = graphs.map { context, graph ->
@@ -145,10 +126,11 @@ workflow {
     }
     INDEX_ROWS(MT_KAHYPAR.out.partition, 1)
     def nodeMarks = INDEX_ROWS.out.output.map { context, marks ->
-        tuple(context.graph, context.report, marks)
+        tuple(context.graph, context.kahyparOpts.c_rating_edge_metadata, marks)
     }
-    def reportSpecs = trials.map { _repetition, report, _opts ->
-        tuple(report, report, 'natural_edges')
+    def reportSpecs = ratingOpts.map { opts ->
+        def policy = opts.c_rating_edge_metadata
+        tuple(policy, policy, 'natural_edges')
     }
     RENDER_GRAPH_REPORTS(reportGraphs, nodeMarks, edgeMarks, reportSpecs, [coord_format: 'dimacs10-osm'])
 
@@ -160,20 +142,10 @@ workflow {
         MT_KAHYPAR.out.log,
         MT_KAHYPAR.out.result
     )
-    run_records = records
-    run_database = IMPORT_SQLPLOT_RESULTS.out.database
     partition_maps = RENDER_GRAPH_REPORTS.out.reports
 }
 
 output {
-    run_records {
-        mode 'copy'
-    }
-
-    run_database {
-        mode 'copy'
-    }
-
     region_log {
         mode 'copy'
         path { context, file ->
@@ -198,7 +170,7 @@ output {
     kahypar_results {
         mode 'copy'
         path { context, file ->
-            file >> "${context.graph}/${context.report}/${file.name}"
+            file >> "${context.graph}/${context.kahyparOpts.c_rating_edge_metadata}/${file.name}"
         }
     }
 }

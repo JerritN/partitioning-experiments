@@ -3,7 +3,7 @@
  * Configures and builds a CMake project.  
  *
  * **Inputs**  
- * `context`: Execution context, passed through unchanged.  
+ * `key`: Caller-supplied key, passed through unchanged.  
  * `source`: Directory containing the CMake project.  
  * `opts`: Map of CMake configuration and build options.  
  *
@@ -21,7 +21,7 @@
  * `binary`: Selected executable, if requested.  
  * `configure_log`: CMake configuration output.  
  * `build_log`: CMake compilation output.  
- * All outputs retain the original `context`.  
+ * All outputs retain the original `key`.  
  *
  * **Requirements**  
  * CMake, the selected generator, and a compatible compiler must be available.  
@@ -33,20 +33,20 @@ process CMAKE_BUILD {
     cpus { opts.threads ?: 1 }
 
     input:
-    tuple val(context), path(source), val(opts)
+    tuple val(key), path(source), val(opts)
 
     output:
-    tuple val(context), path('build'),
+    tuple val(key), path('build'),
         emit: build
 
-    tuple val(context), path('bin/*', arity: '1..*'),
+    tuple val(key), path('bin/*', arity: '1..*'),
         optional: true,
         emit: binary
 
-    tuple val(context), path('configure.log'),
+    tuple val(key), path('configure.log'),
         emit: configure_log
 
-    tuple val(context), path('build.log'),
+    tuple val(key), path('build.log'),
         emit: build_log
 
     script:
@@ -55,15 +55,15 @@ process CMAKE_BUILD {
         .add('-B', 'build')
         .addIf(opts.preset != null, '--preset', opts.preset)
 
-    (opts.definitions ?: [:]).each { key, value ->
+    (opts.definitions ?: [:]).each { name, value ->
         assert value != null :
-            "CMake definition ${key} must not be null"
+            "CMake definition ${name} must not be null"
 
         def cmakeValue = value instanceof Boolean
             ? (value ? 'ON' : 'OFF')
             : value
 
-        configure.add("-D${key}=${cmakeValue}")
+        configure.add("-D${name}=${cmakeValue}")
     }
 
     def build = new CommandBuilder('cmake')

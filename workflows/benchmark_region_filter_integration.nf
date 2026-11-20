@@ -51,26 +51,38 @@ workflow {
         [c_rating_edge_metadata: 'natural_edge_contribute_zero'],
         [c_rating_edge_metadata: 'natural_edge_contribute_negative'],
     ])
-    def runs = graphs.combine(ratingOpts)
-        .combine(channel.fromList((1..params.filter_repetitions).toList()))
+    // This experiment shares one filter execution per graph and filter repetition.
+    def filters = graphs.combine(channel.fromList((1..params.filter_repetitions).toList()))
+        .map { graph, repetition -> tuple([graphId: graph.baseName, repetition: repetition], graph, filterOpts) }
+    def partitions = filters.map { filterKey, _graph, _opts -> filterKey }
+        .combine(ratingOpts)
         .combine(channel.fromList((1..params.repetitions).toList()))
-        .map { graph, rating, filterRep, repetition ->
-            def context = [graph: graph.baseName, filterRepetition: filterRep, repetition: repetition]
-            tuple(context, graph, filterOpts, sharedKahyparOpts + rating)
+        .map { filterKey, rating, repetition ->
+            def key = [filter: filterKey, policy: rating.c_rating_edge_metadata, repetition: repetition]
+            tuple(key, filterKey, sharedKahyparOpts + rating)
         }
-    PARTITION_WITH_REGION_FILTER(runs, BUILD_PARTITIONING_TOOLS.out.region_filter, BUILD_PARTITIONING_TOOLS.out.mt_kahypar)
+    def filterTools = BUILD_PARTITIONING_TOOLS.out.region_filter
+    def partitionTools = BUILD_PARTITIONING_TOOLS.out.mt_kahypar
+    PARTITION_WITH_REGION_FILTER(
+        filters, partitions,
+        filterTools.map { _commit, executable -> executable },
+        partitionTools.map { _commit, executable -> executable }
+    )
 
-    def records = PARTITION_WITH_REGION_FILTER.out.results.map { context, result ->
-        SqlPlotResult.withFields(result.text, [
-            graph_id: context.graph,
-            rating_policy: context.kahyparOpts.c_rating_edge_metadata,
-            region_filter_k: context.filterKey.opts.k,
-            filter_repetition: context.filterKey.repetition,
-            repetition: context.repetition,
-            region_filter_commit: context.filterKey.commit,
-            mt_kahypar_commit: context.kahyparCommit
-        ])
-    }.collectFile(name: 'runs.result', newLine: true, sort: true)
+    def records = PARTITION_WITH_REGION_FILTER.out.results
+        .combine(filterTools.map { commit, _executable -> commit })
+        .combine(partitionTools.map { commit, _executable -> commit })
+        .map { key, result, filterCommit, partitionCommit ->
+            SqlPlotResult.withFields(result.text, [
+                graph_id: key.filter.graphId,
+                rating_policy: key.policy,
+                region_filter_k: filterOpts.k,
+                filter_repetition: key.filter.repetition,
+                repetition: key.repetition,
+                region_filter_commit: filterCommit,
+                mt_kahypar_commit: partitionCommit
+            ])
+        }.collectFile(name: 'runs.result', newLine: true, sort: true)
     IMPORT_SQLPLOT_RESULTS(records, 'runs')
 
     publish:

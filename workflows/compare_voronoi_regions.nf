@@ -27,10 +27,10 @@ workflow {
         threads: params.build_threads
     ]
     def buildRequests = channel.of(
-        tuple([tool: 'regionFilter'], params.repository, params.region_filter_revision, regionFilterBuildOpts)
+        tuple('regionFilter', params.repository, params.region_filter_revision, regionFilterBuildOpts)
     )
     BUILD_CMAKE_FROM_GIT(buildRequests)
-    def regionFilterExecutable = BUILD_CMAKE_FROM_GIT.out.binary.map { _context, binary -> binary }
+    def regionFilterExecutable = BUILD_CMAKE_FROM_GIT.out.binary.map { _key, _commit, binary -> binary }
 
     // Load graph files
     def graphPath = file(params.graph_dir, checkIfExists: true)
@@ -38,7 +38,7 @@ workflow {
         graphPath.isDirectory() ? "${graphPath}/*.graph" : graphPath,
         checkIfExists: true
     ).map { graph ->
-        tuple([graph: graph.baseName, graphFile: graph], graph)
+        tuple(graph.baseName, graph)
     }
 
     // Run RegionFilter on each graph file
@@ -50,42 +50,42 @@ workflow {
     def regionFilterInputs = graphs
         .combine(regionFilterExecutable)
         .combine(regionFilterOpts)
-        .map { context, graph, executable, opts ->
-            tuple(context + [regionFilterOpts: opts], executable, graph, opts)
+        .map { graphId, graph, executable, opts ->
+            tuple(graphId, executable, graph, opts)
         }
 
     REGION_FILTER(regionFilterInputs)
     def cutEdges = REGION_FILTER.out.cut_edges
 
-    def reportGraphs = graphs.map { context, graph ->
+    def reportGraphs = graphs.map { graphId, graph ->
         def xyz = graph.resolveSibling("${graph.baseName}.xyz")
         def coords = xyz.exists() ? xyz : file("${xyz}.bz2", checkIfExists: true)
-        tuple(context.graph, graph, coords)
+        tuple(graphId, graph, coords)
     }
 
     // Column 1 holds the Voronoi cells for round 0.
     SPLIT_COLUMNS(REGION_FILTER.out.regions)
-    def cells = SPLIT_COLUMNS.out.columns.flatMap { context, columns ->
-        assert columns.size() == params.region_filter_rounds : "Unexpected region column count for ${context.graph}"
+    def cells = SPLIT_COLUMNS.out.columns.flatMap { graphId, columns ->
+        assert columns.size() == params.region_filter_rounds : "Unexpected region column count for ${graphId}"
         columns.collect { column ->
-            tuple(context + [round: column.baseName.toInteger() - 1], column)
+            tuple([graphId: graphId, round: column.baseName.toInteger() - 1], column)
         }
     }
     INDEX_ROWS(cells, 1)
-    def roundNodeMarks = INDEX_ROWS.out.output.map { context, marks ->
-        tuple(context.graph, context.round, marks)
+    def roundNodeMarks = INDEX_ROWS.out.output.map { roundKey, marks ->
+        tuple(roundKey.graphId, roundKey.round, marks)
     }
 
     // Column 3 holds the round mask; bits 0 through 30 select retained cuts.
     def rounds = channel.fromList((0..<params.region_filter_rounds).toList())
-    def cutsByRound = cutEdges.combine(rounds).map { context, cuts, round ->
-        tuple(context + [round: round], cuts, round)
+    def cutsByRound = cutEdges.combine(rounds).map { graphId, cuts, round ->
+        tuple([graphId: graphId, round: round], cuts, round)
     }
     FILTER_ROWS_BY_BIT(cutsByRound, 3)
     TAKE_COLUMNS(FILTER_ROWS_BY_BIT.out.output, [1, 2])
     APPEND_TO_ROWS(TAKE_COLUMNS.out.output, 0)
-    def roundEdgeMarks = APPEND_TO_ROWS.out.output.map { context, marks ->
-        tuple(context.graph, context.round, marks)
+    def roundEdgeMarks = APPEND_TO_ROWS.out.output.map { roundKey, marks ->
+        tuple(roundKey.graphId, roundKey.round, marks)
     }
     def roundSpecs = rounds.map { round -> tuple("round-${round}", round, round) }
 
@@ -106,15 +106,15 @@ workflow {
 output {
     region_log {
         mode 'copy'
-        path { context, file ->
-            file >> "${context.graph}/region_filter/region_filter.log"
+        path { graphId, file ->
+            file >> "${graphId}/region_filter/region_filter.log"
         }
     }
 
     graph_maps {
         mode 'copy'
-        path { context, file ->
-            file >> "${context.graph}/region_filter/${context.report}/${file.name}"
+        path { graphId, reportKey, file ->
+            file >> "${graphId}/region_filter/${reportKey}/${file.name}"
         }
     }
 }

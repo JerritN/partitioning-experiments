@@ -2,7 +2,7 @@
  * Selects rows whose unsigned 32-bit mask contains a given bit.  
  *
  * **Inputs**  
- * `context`: Execution context, passed through unchanged.  
+ * `key`: Caller-supplied key, passed through unchanged.  
  * `input_file`: Whitespace-delimited table.  
  * `bit`: Zero-based bit index for this input.  
  * `column`: 1-based position of the mask column.  
@@ -12,11 +12,11 @@
  */
 process FILTER_ROWS_BY_BIT {
     input:
-    tuple val(context), path(input_file, stageAs: 'input/*'), val(bit)
+    tuple val(key), path(input_file, stageAs: 'input/*'), val(bit)
     val(column)
 
     output:
-    tuple val(context), path('output.txt'), emit: output
+    tuple val(key), path('output.txt'), emit: output
 
     script:
     assert column instanceof Integer && column > 0 : "Expected a positive mask column"

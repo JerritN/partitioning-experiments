@@ -4,7 +4,7 @@
  * Partitions a graph or hypergraph using Mt-KaHyPar.  
  *
  * **Inputs**  
- * `context`: Execution context, passed through unchanged.  
+ * `key`: Caller-supplied key, passed through unchanged.  
  * `executable`: Mt-KaHyPar executable, prebuilt or supplied by a build process.  
  * `graph`: Input graph or hypergraph file.  
  * `initial_partition`: Optional initial partition or fragment mapping (`[]` if omitted).  
@@ -38,7 +38,7 @@
  * `partition`: Vertex-to-block mapping (`partition.txt`).  
  * `log`: Combined stdout and stderr (`mt_kahypar.log`).  
  * `result`: Machine-readable RESULT line (`result.txt`).  
- * All outputs retain the original `context`.  
+ * All outputs retain the original `key`.  
  */
 
 process MT_KAHYPAR {
@@ -48,7 +48,7 @@ process MT_KAHYPAR {
     cpus { opts.threads ?: 1 }
 
     input:
-    tuple val(context), 
+    tuple val(key), 
         path(executable),
         path(graph), 
         path(initial_partition),
@@ -56,13 +56,13 @@ process MT_KAHYPAR {
         val(opts)
 
     output:
-    tuple val(context), path('partition.txt'),
+    tuple val(key), path('partition.txt'),
         emit: partition
 
-    tuple val(context), path('mt_kahypar.log'),
+    tuple val(key), path('mt_kahypar.log'),
         emit: log
 
-    tuple val(context), path('result.txt'),
+    tuple val(key), path('result.txt'),
         emit: result
 
     script:
@@ -101,9 +101,9 @@ process MT_KAHYPAR {
         initial_partition_vcycle_fragments: '--initial-partition-vcycle-fragments'
     ]
 
-    booleanValues.each { key, flag ->
-        if (opts[key] != null) {
-            command.add("${flag}=${opts[key] ? 1 : 0}")
+    booleanValues.each { option, flag ->
+        if (opts[option] != null) {
+            command.add("${flag}=${opts[option] ? 1 : 0}")
         }
     }
 

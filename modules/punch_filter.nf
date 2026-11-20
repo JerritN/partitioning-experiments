@@ -2,7 +2,7 @@
  * Filters a graph using PUNCH and generates a contracted fragment graph.  
  *
  * **Inputs**  
- * `context`: Execution context, passed through unchanged.  
+ * `key`: Caller-supplied key, passed through unchanged.  
  * `executable`: Path to the PUNCH executable, either prebuilt or produced by a build process.  
  * `graph`: Input graph in DIMACS (`.gr`) or METIS format.  
  * `opts`: Map of filtering parameters.  
@@ -29,7 +29,7 @@
  * `mapping`: Original vertex-to-fragment mapping (`fragment_mapping.txt`).  
  * `kept_edges`: List of retained edges (`kept_edges.txt`).  
  * `log`: Combined stdout and stderr (`punch.log`).  
- * All outputs retain the original `context`.  
+ * All outputs retain the original `key`.  
  *
  * **Requirements**  
  * The supplied executable must be compatible with the execution environment.  
@@ -40,22 +40,22 @@ process PUNCH_FILTER {
     cache params.get('cache_punch_filter', true)
 
     input:
-    tuple val(context),
+    tuple val(key),
         path(executable),
         path(graph),
         val(opts)
 
     output:
-    tuple val(context), path('fragments.graph'),
+    tuple val(key), path('fragments.graph'),
         emit: graph
 
-    tuple val(context), path('fragment_mapping.txt'),
+    tuple val(key), path('fragment_mapping.txt'),
         emit: mapping
 
-    tuple val(context), path('kept_edges.txt'),
+    tuple val(key), path('kept_edges.txt'),
         emit: kept_edges
 
-    tuple val(context), path('punch.log'),
+    tuple val(key), path('punch.log'),
         emit: log
 
     script:

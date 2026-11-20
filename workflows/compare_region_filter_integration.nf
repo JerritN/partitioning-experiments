@@ -48,27 +48,38 @@ workflow {
         [c_rating_edge_metadata: 'natural_edge_contribute_zero'],
         [c_rating_edge_metadata: 'natural_edge_contribute_negative'],
     ])
-    def runs = graphs.combine(ratingOpts).map { graph, rating ->
-        tuple([graph: graph.baseName], graph, filterOpts, sharedKahyparOpts + rating)
-    }
-    PARTITION_WITH_REGION_FILTER(runs, BUILD_PARTITIONING_TOOLS.out.region_filter, BUILD_PARTITIONING_TOOLS.out.mt_kahypar)
+    // One filter per graph; each policy reuses that graph's natural edges.
+    def filters = graphs.map { graph -> tuple(graph.baseName, graph, filterOpts) }
+    def partitions = filters.map { graphId, _graph, _opts -> graphId }
+        .combine(ratingOpts)
+        .map { graphId, rating ->
+            def key = [graphId: graphId, policy: rating.c_rating_edge_metadata]
+            tuple(key, graphId, sharedKahyparOpts + rating)
+        }
+    def filterTools = BUILD_PARTITIONING_TOOLS.out.region_filter
+    def partitionTools = BUILD_PARTITIONING_TOOLS.out.mt_kahypar
+    PARTITION_WITH_REGION_FILTER(
+        filters, partitions,
+        filterTools.map { _commit, executable -> executable },
+        partitionTools.map { _commit, executable -> executable }
+    )
+
     def naturalEdges = PARTITION_WITH_REGION_FILTER.out.natural_edges
 
     // Render each partition with the natural edges from its RegionFilter run
-    def reportGraphs = naturalEdges.map { key, _edges ->
-        def graph = key.graphFile
+    def reportGraphs = filters.map { graphId, graph, _opts ->
         def xyz = graph.resolveSibling("${graph.baseName}.xyz")
         def coords = xyz.exists() ? xyz : file("${xyz}.bz2", checkIfExists: true)
-        tuple(key, graph, coords)
+        tuple(graphId, graph, coords)
     }
 
     APPEND_TO_ROWS(naturalEdges, 0)
-    def edgeMarks = APPEND_TO_ROWS.out.output.map { context, marks ->
-        tuple(context, 'natural_edges', marks)
+    def edgeMarks = APPEND_TO_ROWS.out.output.map { key, marks ->
+        tuple(key, 'natural_edges', marks)
     }
     INDEX_ROWS(PARTITION_WITH_REGION_FILTER.out.partitions, 1)
-    def nodeMarks = INDEX_ROWS.out.output.map { context, marks ->
-        tuple(context.filterKey, context.kahyparOpts.c_rating_edge_metadata, marks)
+    def nodeMarks = INDEX_ROWS.out.output.map { key, marks ->
+        tuple(key.graphId, key.policy, marks)
     }
     def reportSpecs = ratingOpts.map { opts ->
         def policy = opts.c_rating_edge_metadata
@@ -77,22 +88,17 @@ workflow {
     RENDER_GRAPH_REPORTS(reportGraphs, nodeMarks, edgeMarks, reportSpecs, [coord_format: 'dimacs10-osm'])
 
     // Publish only the graph and policy identifiers alongside the output files.
-    def filterLogs = PARTITION_WITH_REGION_FILTER.out.filter_logs.map { key, log -> tuple(key.graph, log) }
-    def edgeFiles = naturalEdges.map { key, edges -> tuple(key.graph, edges) }
     def partitionFiles = PARTITION_WITH_REGION_FILTER.out.partitions.mix(
         PARTITION_WITH_REGION_FILTER.out.partition_logs,
         PARTITION_WITH_REGION_FILTER.out.results
-    ).map { context, artifact -> tuple(context.graph, context.kahyparOpts.c_rating_edge_metadata, artifact) }
-    def maps = RENDER_GRAPH_REPORTS.out.reports.map { context, report ->
-        tuple(context.graph.graph, context.report, report)
-    }
+    ).map { key, artifact -> tuple(key.graphId, key.policy, artifact) }
 
     // Publish results
     publish:
-    region_log = filterLogs
-    natural_edges = edgeFiles
+    region_log = PARTITION_WITH_REGION_FILTER.out.filter_logs
+    natural_edges = naturalEdges
     kahypar_results = partitionFiles
-    partition_maps = maps
+    partition_maps = RENDER_GRAPH_REPORTS.out.reports
 }
 
 output {

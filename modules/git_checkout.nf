@@ -3,7 +3,7 @@
  * Checks out a specific Git commit into a task-local directory.  
  *
  * **Inputs**  
- * `context`: Execution context, passed through unchanged.  
+ * `key`: Caller-supplied key, passed through unchanged.  
  * `repository`: Local Git repository path or remote URL.  
  * `commit`: Full Git commit hash to check out.  
  *
@@ -19,10 +19,10 @@ process GIT_CHECKOUT {
     cache params.get('cache_git_checkout', true)
 
     input:
-    tuple val(context), val(repository), val(commit)
+    tuple val(key), val(repository), val(commit)
 
     output:
-    tuple val(context), path('source'),
+    tuple val(key), path('source'),
         emit: source
 
     script:

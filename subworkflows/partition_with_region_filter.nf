@@ -3,43 +3,52 @@ include { TAKE_COLUMNS } from '../modules/take_columns.nf'
 include { MT_KAHYPAR } from '../modules/mt_kahypar.nf'
 
 /**
- * Filters each distinct graph/filter request and partitions with its natural edges.  
+ * Partitions graphs using the natural edges from the requested filter runs.  
  *
  * **Inputs**  
- * `runs`: Channel of `(context, graph, filter_opts, partition_opts)`, one tuple per partition.  
- * Supply `context.graph` as the graph ID. Optional `context.filterRepetition` selects an independent filter run (default: 1).  
- * Keep partition repetitions distinct in `context`. Tool options are passed to their respective processes.  
- * `region_filter`, `mt_kahypar`: Each supplies one `(revision, executable)` tuple.  
+ * `filter_requests`: Channel of `(filter_key, graph_file, filter_opts)`, one request per unique filter key.  
+ * `partition_requests`: Channel of `(partition_key, filter_key, partition_opts)`, one request per partition.  
+ * Each partition references an existing filter key. Several partitions may share its edges.  
+ * `region_filter`, `mt_kahypar`: Each supplies one executable.  
  *
  * **Outputs**  
- * `natural_edges`, `filter_logs`: File paired with the filter key (graph ID/file, executable, revision, options, and filter repetition).  
- * `partitions`, `partition_logs`, `results`: File paired with the run context extended by `filterKey`, `kahyparOpts`, and `kahyparCommit`.  
+ * `natural_edges`, `filter_logs`: One `(filter_key, file)` per filter request.  
+ * `partitions`, `partition_logs`, `results`: One `(partition_key, file)` per partition request.  
+ * Both keys belong to the caller and pass through unchanged.  
  */
 workflow PARTITION_WITH_REGION_FILTER {
     take:
-    runs
+    filter_requests
+    partition_requests
     region_filter
     mt_kahypar
 
     main:
-    requests = runs.combine(region_filter).map { context, graph, filterOpts, partitionOpts, commit, executable ->
-        def key = [graph: context.graph, graphFile: graph, executable: executable, commit: commit,
-                   opts: filterOpts, repetition: context.get('filterRepetition', 1)]
-        tuple(key, context, partitionOpts)
+    filters = filter_requests.groupTuple().map { key, graphs, opts ->
+        assert graphs.size() == 1 : "Duplicate filter key: ${key}"
+        tuple(key, graphs[0], opts[0])
     }
-    filterInputs = requests.map { key, _context, _opts -> key }
-        .unique()
-        .map { key -> tuple(key, key.executable, key.graphFile, key.opts) }
-
+    filterInputs = filters.combine(region_filter).map { key, graph, opts, executable ->
+        tuple(key, executable, graph, opts)
+    }
     REGION_FILTER(filterInputs)
     TAKE_COLUMNS(REGION_FILTER.out.cut_edges, [1, 2])
 
-    partitionInputs = requests.combine(TAKE_COLUMNS.out.output, by: 0)
-        .combine(mt_kahypar)
-        .map { key, context, opts, edges, commit, executable ->
-            def run = context + [filterKey: key, kahyparOpts: opts, kahyparCommit: commit]
-            tuple(run, executable, key.graphFile, [], edges, opts)
+    // Match the original graph and its edge file once, then fan out to its partitions.
+    filteredGraphs = filters.map { key, graph, _opts -> tuple(key, graph) }
+        .join(TAKE_COLUMNS.out.output, failOnDuplicate: true, failOnMismatch: true)
+        .map { key, graph, edges -> tuple(key, [graph: graph, edges: edges]) }
+    byFilter = partition_requests.map { partitionKey, filterKey, opts ->
+        tuple(filterKey, [key: partitionKey, opts: opts])
+    }.groupTuple()
+    partitionInputs = byFilter.join(filteredGraphs, remainder: true, failOnDuplicate: true)
+        .flatMap { filterKey, requests, files ->
+            if (requests == null) return []
+            assert files != null : "Unknown filter key: ${filterKey}"
+            requests.collect { run -> tuple(run.key, files.graph, files.edges, run.opts) }
         }
+        .combine(mt_kahypar)
+        .map { key, graph, edges, opts, executable -> tuple(key, executable, graph, [], edges, opts) }
     MT_KAHYPAR(partitionInputs)
 
     emit:

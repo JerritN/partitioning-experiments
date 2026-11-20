@@ -1,11 +1,21 @@
-
+/**
+ * Selects whitespace-separated columns in the requested order.  
+ *
+ * **Inputs**  
+ * `key`: Caller-supplied key, passed through unchanged.  
+ * `input_file`: Input text file.  
+ * `columns`: One-based column index or list of indices.  
+ *
+ * **Outputs**  
+ * `output`: Transformed file paired with the original key.  
+ */
 process TAKE_COLUMNS {
     input:
-    tuple val(context), path(input_file, stageAs: 'input/*')
+    tuple val(key), path(input_file, stageAs: 'input/*')
     val(columns)
 
     output:
-    tuple val(context), path('output.txt'),
+    tuple val(key), path('output.txt'),
         emit: output
 
     script:

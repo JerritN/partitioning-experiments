@@ -1,11 +1,21 @@
-
+/**
+ * Prepends a sequential index to every row.  
+ *
+ * **Inputs**  
+ * `key`: Caller-supplied key, passed through unchanged.  
+ * `input_file`: Input text file.  
+ * `start_index`: Integer index assigned to the first row.  
+ *
+ * **Outputs**  
+ * `output`: Transformed file paired with the original key.  
+ */
 process INDEX_ROWS {
     input:
-    tuple val(context), path(input_file)
+    tuple val(key), path(input_file)
     val(start_index)
 
     output:
-    tuple val(context), path('output.txt'),
+    tuple val(key), path('output.txt'),
         emit: output
 
     script:

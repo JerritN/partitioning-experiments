@@ -1,6 +1,5 @@
 include { BUILD_CMAKE_FROM_GIT } from '../subworkflows/build_cmake_from_git.nf'
 include { RENDER_GRAPH_REPORTS } from '../subworkflows/render_graph_reports.nf'
-include { REGION_ROUND_MARKS } from '../modules/region_round_marks.nf'
 include { REGION_FILTER } from '../modules/region_filter.nf'
 include { TAKE_COLUMNS } from '../modules/take_columns.nf'
 include { MT_KAHYPAR } from '../modules/mt_kahypar.nf'
@@ -21,7 +20,6 @@ params {
     build_threads: Integer = 8
     graph_dir: String = "${params.project_path}/data"
     region_filter_u: Integer = 1000
-    region_filter_rounds: Integer = 1
     mt_kahypar_threads: Integer = 8
     mt_kahypar_blocks: Integer = 8
     mt_kahypar_epsilon: Float = 0.03f
@@ -31,8 +29,6 @@ params {
 
 workflow {
     main:
-    assert params.region_filter_rounds in 1..31 : 'region_filter_rounds must be between 1 and 31 for per-round edge masks'
-
     // Build the two tools at their requested revisions.
     def kahyparBuildOpts = [
         preset: 'minimal',
@@ -74,8 +70,7 @@ workflow {
         
     // Run RegionFilter on each graph file
     def regionFilterOpts = channel.value([
-        U: params.region_filter_u,
-        rounds: params.region_filter_rounds
+        U: params.region_filter_u
     ])
     
     def regionFilterInputs = graphs
@@ -127,7 +122,7 @@ workflow {
     
     MT_KAHYPAR(kahyparInputs)
 
-    // Share graph coordinates across partition and RegionFilter round reports.
+    // Render each partition with the natural edges from its RegionFilter run
     def reportGraphs = graphs.map { context, graph ->
         def xyz = graph.resolveSibling("${graph.baseName}.xyz")
         def coords = xyz.exists() ? xyz : file("${xyz}.bz2", checkIfExists: true)
@@ -146,28 +141,7 @@ workflow {
         def policy = opts.c_rating_edge_metadata
         tuple(policy, policy, 'natural_edges')
     }
-    // Region IDs occupy one column per round; the cut-edge mask uses the corresponding bit.
-    def rounds = channel.fromList((0..<params.region_filter_rounds).toList())
-    def roundInputs = REGION_FILTER.out.regions
-        .join(cutEdges, failOnDuplicate: true, failOnMismatch: true)
-        .combine(rounds)
-        .map { context, regions, cuts, round -> tuple(context, round, regions, cuts) }
-    REGION_ROUND_MARKS(roundInputs)
-    def roundNodeMarks = REGION_ROUND_MARKS.out.marks.map { context, round, edges, nodes ->
-        tuple(context.graph, round, nodes)
-    }
-    def roundEdgeMarks = REGION_ROUND_MARKS.out.marks.map { context, round, edges, nodes ->
-        tuple(context.graph, round, edges)
-    }
-    def roundSpecs = rounds.map { round -> tuple("region_filter/round-${round}", round, round) }
-
-    RENDER_GRAPH_REPORTS(
-        reportGraphs,
-        nodeMarks.mix(roundNodeMarks),
-        edgeMarks.mix(roundEdgeMarks),
-        reportSpecs.mix(roundSpecs),
-        [coord_format: 'dimacs10-osm']
-    )
+    RENDER_GRAPH_REPORTS(reportGraphs, nodeMarks, edgeMarks, reportSpecs, [coord_format: 'dimacs10-osm'])
 
     // Publish results
     publish:
@@ -176,7 +150,7 @@ workflow {
     kahypar_results = MT_KAHYPAR.out.partition.mix(
         MT_KAHYPAR.out.log
     )
-    graph_maps = RENDER_GRAPH_REPORTS.out.reports
+    partition_maps = RENDER_GRAPH_REPORTS.out.reports
 }
 
 output {
@@ -194,7 +168,7 @@ output {
         }
     }
 
-    graph_maps {
+    partition_maps {
         mode 'copy'
         path { context, file ->
             file >> "${context.graph}/${context.report}/${file.name}"

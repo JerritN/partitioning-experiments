@@ -2,7 +2,7 @@
  * Renders a geographic graph using Streetviz.  
  *
  * **Inputs**  
- * `context`: Execution context, passed through unchanged.  
+ * `key`: Caller-supplied key, passed through unchanged.  
  * `graph`: Input graph in unweighted, undirected METIS format.  
  * `coords`: Input coordinates in vertex order.  
  * `edge_marks`: Optional edge groups, one `u v group` per line (`[]` if omitted).  
@@ -24,7 +24,7 @@
  * **Outputs**  
  * `report`: Interactive HTML map (`map.html`).  
  * `log`: Combined stdout and stderr (`streetviz.log`).  
- * Both outputs retain the original `context`.  
+ * Both outputs retain the original `key`.  
  *
  * **Requirements**  
  * The `streetviz` executable must be available on `PATH` in the execution environment.  
@@ -34,7 +34,7 @@ process STREETVIZ {
     cache params.get('cache_streetviz', true)
 
     input:
-    tuple val(context),
+    tuple val(key),
         path(graph, stageAs: 'graph/*'),
         path(coords, stageAs: 'coords/*'),
         path(edge_marks, stageAs: 'edge_marks/*'),
@@ -43,8 +43,8 @@ process STREETVIZ {
         val(opts)
 
     output:
-    tuple val(context), path('map.html'), emit: report
-    tuple val(context), path('streetviz.log'), emit: log
+    tuple val(key), path('map.html'), emit: report
+    tuple val(key), path('streetviz.log'), emit: log
 
     script:
     assert opts.coord_format != null : "Streetviz requires coord_format"

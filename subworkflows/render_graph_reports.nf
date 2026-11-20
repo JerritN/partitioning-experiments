@@ -23,7 +23,7 @@ def attachMarks(requests, marks, field) {
  * Supply unique graph and report keys and one file per requested graph/mark key in each marks channel.  
  *
  * **Outputs**  
- * `reports`, `logs`: Streetviz HTML and logs, each paired with `[graph: graph_key, report: report_key]`.  
+ * `reports`, `logs`: Streetviz HTML and logs, each emitted as `(graph_key, report_key, file)`. Both caller-supplied keys pass through unchanged.  
  */
 workflow RENDER_GRAPH_REPORTS {
     take:
@@ -35,17 +35,17 @@ workflow RENDER_GRAPH_REPORTS {
 
     main:
     requests = graphs.combine(report_specs).map { graphKey, graph, coords, reportKey, nodeKey, edgeKey ->
-        tuple(graphKey, nodeKey, [context: [graph: graphKey, report: reportKey],
+        tuple(graphKey, nodeKey, [graphKey: graphKey, reportKey: reportKey,
             graph: graph, coords: coords, edgeKey: edgeKey])
     }
     with_nodes = attachMarks(requests, node_marks, 'nodeMarks')
-        .map { report -> tuple(report.context.graph, report.edgeKey, report) }
+        .map { report -> tuple(report.graphKey, report.edgeKey, report) }
     render_inputs = attachMarks(with_nodes, edge_marks, 'edgeMarks').map { report ->
-        tuple(report.context, report.graph, report.coords, report.edgeMarks, report.nodeMarks, [], render_opts)
+        tuple([graph: report.graphKey, report: report.reportKey], report.graph, report.coords, report.edgeMarks, report.nodeMarks, [], render_opts)
     }
     STREETVIZ(render_inputs)
 
     emit:
-    reports = STREETVIZ.out.report
-    logs = STREETVIZ.out.log
+    reports = STREETVIZ.out.report.map { key, file -> tuple(key.graph, key.report, file) }
+    logs = STREETVIZ.out.log.map { key, file -> tuple(key.graph, key.report, file) }
 }

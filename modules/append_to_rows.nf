@@ -1,12 +1,21 @@
-
-
+/**
+ * Appends a value to every row.  
+ *
+ * **Inputs**  
+ * `key`: Caller-supplied key, passed through unchanged.  
+ * `input_file`: Input text file.  
+ * `value`: Value to append to each row.  
+ *
+ * **Outputs**  
+ * `output`: Transformed file paired with the original key.  
+ */
 process APPEND_TO_ROWS {
     input:
-    tuple val(context), path(input_file, stageAs: 'input/*')
+    tuple val(key), path(input_file, stageAs: 'input/*')
     val(value)
 
     output:
-    tuple val(context), path("output.txt"),
+    tuple val(key), path("output.txt"),
         emit: output
     
     script:

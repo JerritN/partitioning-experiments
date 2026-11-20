@@ -2,7 +2,7 @@
  * Splits a whitespace-delimited table into one file per column, preserving row order.  
  *
  * **Inputs**  
- * `context`: Execution context, passed through unchanged.  
+ * `key`: Caller-supplied key, passed through unchanged.  
  * `input_file`: Table with a consistent number of fields per row.  
  *
  * **Outputs**  
@@ -10,10 +10,10 @@
  */
 process SPLIT_COLUMNS {
     input:
-    tuple val(context), path(input_file, stageAs: 'input/*')
+    tuple val(key), path(input_file, stageAs: 'input/*')
 
     output:
-    tuple val(context), path('columns/*.txt', arity: '1..*'), emit: columns
+    tuple val(key), path('columns/*.txt', arity: '1..*'), emit: columns
 
     script:
     def split = new CommandBuilder('awk')

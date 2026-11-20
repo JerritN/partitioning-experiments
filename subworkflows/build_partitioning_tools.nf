@@ -20,14 +20,14 @@ workflow BUILD_PARTITIONING_TOOLS {
     requests = channel.fromList(tools.collect { name, tool ->
         def opts = [preset: tool.cmake_preset, target: tool.target, binary: tool.binary, threads: threads]
         if (tool.definitions != null) opts.definitions = tool.definitions
-        tuple([tool: name], repository, tool.revision, opts)
+        tuple(name, repository, tool.revision, opts)
     })
     BUILD_CMAKE_FROM_GIT(requests)
-    binaries = BUILD_CMAKE_FROM_GIT.out.binary.branch { context, binary ->
-        region_filter: context.tool == 'region_filter'
-            return tuple(context.commit, binary)
-        mt_kahypar: context.tool == 'mt_kahypar'
-            return tuple(context.commit, binary)
+    binaries = BUILD_CMAKE_FROM_GIT.out.binary.branch { name, commit, binary ->
+        region_filter: name == 'region_filter'
+            return tuple(commit, binary)
+        mt_kahypar: name == 'mt_kahypar'
+            return tuple(commit, binary)
     }
 
     emit:

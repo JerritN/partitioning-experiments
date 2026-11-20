@@ -139,7 +139,8 @@ workflow {
     region_log = REGION_FILTER.out.log
     natural_edges = naturalEdges
     kahypar_results = MT_KAHYPAR.out.partition.mix(
-        MT_KAHYPAR.out.log
+        MT_KAHYPAR.out.log,
+        MT_KAHYPAR.out.result
     )
     partition_maps = RENDER_GRAPH_REPORTS.out.reports
 }

@@ -8,14 +8,7 @@ include { APPEND_TO_ROWS } from '../modules/append_to_rows.nf'
 include { REGION_FILTER } from '../modules/region_filter.nf'
 
 params {
-    // Use with -resume; set a stage to false to rerun its tasks.
-    cache_git_checkout: Boolean = true
-    cache_cmake_build: Boolean = true
-    cache_region_filter: Boolean = true
-    cache_streetviz: Boolean = true
-
     repository: String = "${params.project_path}/mt-kahypar"
-    region_filter_commit: String = "7467201"
     build_threads: Integer = 8
     graph_dir: String = "${params.project_path}/data"
     region_filter_u: Integer = 1000
@@ -27,13 +20,13 @@ workflow {
     assert params.region_filter_rounds in 1..31 : 'region_filter_rounds must be between 1 and 31 for per-round edge masks'
 
     def regionFilterBuildOpts = [
-        preset: 'minimal',
-        target: 'RegionFilter',
-        binary: params.mt_kahypar.region_filter_binary,
+        preset: params.region_filter.preset,
+        target: params.region_filter.target,
+        binary: params.region_filter.binary,
         threads: params.build_threads
     ]
     def buildRequests = channel.of(
-        tuple([tool: 'regionFilter'], params.repository, params.region_filter_commit, regionFilterBuildOpts)
+        tuple('regionFilter', params.repository, params.region_filter.revision, regionFilterBuildOpts)
     )
     BUILD_CMAKE_FROM_GIT(buildRequests)
     def regionFilterExecutable = BUILD_CMAKE_FROM_GIT.out.binary.map { _context, binary -> binary }

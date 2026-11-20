@@ -7,16 +7,7 @@ include { APPEND_TO_ROWS } from '../modules/append_to_rows.nf'
 include { INDEX_ROWS } from '../modules/index_rows.nf'
 
 params {
-    // Use with -resume; set a stage to false to rerun its tasks.
-    cache_git_checkout: Boolean = true
-    cache_cmake_build: Boolean = true
-    cache_region_filter: Boolean = true
-    cache_mt_kahypar: Boolean = true
-    cache_streetviz: Boolean = true
-
     repository: String = "${params.project_path}/mt-kahypar"
-    kahypar_revision: String = "085bdae"
-    region_filter_revision: String = "7467201"
     build_threads: Integer = 8
     graph_dir: String = "${params.project_path}/data"
     region_filter_u: Integer = 1000
@@ -31,28 +22,26 @@ workflow {
     main:
     // Build the two tools at their requested revisions.
     def kahyparBuildOpts = [
-        preset: 'minimal',
-        definitions: [
-            KAHYPAR_ENABLE_GRAPH_PARTITIONING_FEATURES: true
-        ],
-        target: 'MtKaHyPar',
-        binary: params.mt_kahypar.mt_kahypar_binary,
+        preset: params.mt_kahypar.preset,
+        definitions: params.mt_kahypar.definitions,
+        target: params.mt_kahypar.target,
+        binary: params.mt_kahypar.binary,
         threads: params.build_threads
     ]
     def regionFilterBuildOpts = [
-        preset: 'minimal',
-        target: 'RegionFilter',
-        binary: params.mt_kahypar.region_filter_binary,
+        preset: params.region_filter.preset,
+        target: params.region_filter.target,
+        binary: params.region_filter.binary,
         threads: params.build_threads
     ]
     def buildRequests = channel.of(
-        tuple([tool: 'kahypar'], params.repository, params.kahypar_revision, kahyparBuildOpts),
-        tuple([tool: 'regionFilter'], params.repository, params.region_filter_revision, regionFilterBuildOpts)
+        tuple('kahypar', params.repository, params.mt_kahypar.revision, kahyparBuildOpts),
+        tuple('regionFilter', params.repository, params.region_filter.revision, regionFilterBuildOpts)
     )
     BUILD_CMAKE_FROM_GIT(buildRequests)
     def binaries = BUILD_CMAKE_FROM_GIT.out.binary.branch { context, _binary ->
-        kahypar: context.tool == 'kahypar'
-        regionFilter: context.tool == 'regionFilter'
+        kahypar: context == 'kahypar'
+        regionFilter: context == 'regionFilter'
     }
     def kahyparExecutable = binaries.kahypar
         .map { _context, binary -> binary }

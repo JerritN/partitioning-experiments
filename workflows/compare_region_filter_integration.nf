@@ -15,8 +15,8 @@ params {
     cache_streetviz: Boolean = true
 
     repository: String = "${params.project_path}/mt-kahypar"
-    kahypar_commit: String = "085bdae"
-    region_filter_commit: String = "7467201"
+    kahypar_revision: String = "085bdae"
+    region_filter_revision: String = "7467201"
     build_threads: Integer = 8
     graph_dir: String = "${params.project_path}/data"
     region_filter_u: Integer = 1000
@@ -46,8 +46,8 @@ workflow {
         threads: params.build_threads
     ]
     def buildRequests = channel.of(
-        tuple([tool: 'kahypar'], params.repository, params.kahypar_commit, kahyparBuildOpts),
-        tuple([tool: 'regionFilter'], params.repository, params.region_filter_commit, regionFilterBuildOpts)
+        tuple([tool: 'kahypar'], params.repository, params.kahypar_revision, kahyparBuildOpts),
+        tuple([tool: 'regionFilter'], params.repository, params.region_filter_revision, regionFilterBuildOpts)
     )
     BUILD_CMAKE_FROM_GIT(buildRequests)
     def binaries = BUILD_CMAKE_FROM_GIT.out.binary.branch { context, _binary ->

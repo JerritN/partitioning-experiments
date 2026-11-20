@@ -21,7 +21,7 @@ workflow BUILD_CMAKE_FROM_GIT {
         def commit = GitUtils.resolveCommit(repository, revision)
         tuple(repository, commit, context, opts)
     }
-    checkouts = resolved.map { repository, commit, context, opts ->
+    checkouts = resolved.map { repository, commit, _context, _opts ->
         tuple(repository, commit)
     }.unique().map { repository, commit ->
         tuple([repository: repository, commit: commit], repository, commit)
@@ -31,9 +31,11 @@ workflow BUILD_CMAKE_FROM_GIT {
     sources = GIT_CHECKOUT.out.source.map { key, source ->
         tuple(key.repository, key.commit, source)
     }
-    build_inputs = resolved.combine(sources, by: [0, 1]).map { repository, commit, context, opts, source ->
+
+    build_inputs = resolved.combine(sources, by: [0, 1]).map { _repository, commit, context, opts, source ->
         tuple(context + [commit: commit, build_opts: opts], source, opts)
     }
+    
     CMAKE_BUILD(build_inputs)
 
     emit:

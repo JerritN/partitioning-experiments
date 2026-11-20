@@ -9,7 +9,8 @@ include { REGION_FILTER } from '../modules/region_filter.nf'
 
 params {
     repository: String = "${params.project_path}/mt-kahypar"
-    build_threads: Integer = 8
+    build_threads: Integer
+    region_filter_revision: String
     graph_dir: String = "${params.project_path}/data"
     region_filter_u: Integer = 1000
     region_filter_rounds: Integer = 1
@@ -20,13 +21,13 @@ workflow {
     assert params.region_filter_rounds in 1..31 : 'region_filter_rounds must be between 1 and 31 for per-round edge masks'
 
     def regionFilterBuildOpts = [
-        preset: params.region_filter.preset,
+        preset: params.region_filter.cmake_preset,
         target: params.region_filter.target,
         binary: params.region_filter.binary,
         threads: params.build_threads
     ]
     def buildRequests = channel.of(
-        tuple('regionFilter', params.repository, params.region_filter.revision, regionFilterBuildOpts)
+        tuple([tool: 'regionFilter'], params.repository, params.region_filter_revision, regionFilterBuildOpts)
     )
     BUILD_CMAKE_FROM_GIT(buildRequests)
     def regionFilterExecutable = BUILD_CMAKE_FROM_GIT.out.binary.map { _context, binary -> binary }

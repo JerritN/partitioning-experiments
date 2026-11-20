@@ -1,8 +1,6 @@
-include { BUILD_CMAKE_FROM_GIT } from '../subworkflows/build_cmake_from_git.nf'
+include { BUILD_PARTITIONING_TOOLS } from '../subworkflows/build_partitioning_tools.nf'
+include { PARTITION_WITH_REGION_FILTER } from '../subworkflows/partition_with_region_filter.nf'
 include { RENDER_GRAPH_REPORTS } from '../subworkflows/render_graph_reports.nf'
-include { REGION_FILTER } from '../modules/region_filter.nf'
-include { TAKE_COLUMNS } from '../modules/take_columns.nf'
-include { MT_KAHYPAR } from '../modules/mt_kahypar.nf'
 include { APPEND_TO_ROWS } from '../modules/append_to_rows.nf'
 include { INDEX_ROWS } from '../modules/index_rows.nf'
 
@@ -22,63 +20,19 @@ params {
 
 workflow {
     main:
-    // Build the two tools at their requested revisions.
-    def kahyparBuildOpts = [
-        preset: params.mt_kahypar.cmake_preset,
-        definitions: params.mt_kahypar.definitions,
-        target: params.mt_kahypar.target,
-        binary: params.mt_kahypar.binary,
-        threads: params.build_threads
-    ]
-    def regionFilterBuildOpts = [
-        preset: params.region_filter.cmake_preset,
-        target: params.region_filter.target,
-        binary: params.region_filter.binary,
-        threads: params.build_threads
-    ]
-    def buildRequests = channel.of(
-        tuple([tool: 'kahypar'], params.repository, params.mt_kahypar_revision, kahyparBuildOpts),
-        tuple([tool: 'regionFilter'], params.repository, params.region_filter_revision, regionFilterBuildOpts)
-    )
-    BUILD_CMAKE_FROM_GIT(buildRequests)
-    def binaries = BUILD_CMAKE_FROM_GIT.out.binary.branch { context, _binary ->
-        kahypar: context.tool == 'kahypar'
-        regionFilter: context.tool == 'regionFilter'
-    }
-    def kahyparExecutable = binaries.kahypar
-        .map { _context, binary -> binary }
-    def regionFilterExecutable = binaries.regionFilter
-        .map { _context, binary -> binary }
+    BUILD_PARTITIONING_TOOLS(params.repository, params.build_threads, [
+        region_filter: params.region_filter + [revision: params.region_filter_revision],
+        mt_kahypar: params.mt_kahypar + [revision: params.mt_kahypar_revision]
+    ])
 
     // Load graph files
     def graphPath = file(params.graph_dir, checkIfExists: true)
     def graphs = channel.fromPath(
         graphPath.isDirectory() ? "${graphPath}/*.graph" : graphPath,
         checkIfExists: true
-    ).map { graph ->
-        tuple([graph: graph.baseName, graphFile: graph], graph)
-    }
-        
-    // Run RegionFilter on each graph file
-    def regionFilterOpts = channel.value([
-        k: params.region_filter_k
-    ])
-    
-    def regionFilterInputs = graphs
-        .combine(regionFilterExecutable)
-        .combine(regionFilterOpts)
-        .map { context, graph, executable, opts ->
-            tuple(context + [regionFilterOpts: opts], executable, graph, opts)
-        }
+    )
 
-    REGION_FILTER(regionFilterInputs)
-    def cutEdges = REGION_FILTER.out.cut_edges
-
-    // convert the cut edges to a format suitable for Mt-KaHyPar
-    TAKE_COLUMNS(cutEdges, [1, 2])
-    def naturalEdges = TAKE_COLUMNS.out.output
-
-    // Run Mt-KaHyPar on the natural edges
+    def filterOpts = [k: params.region_filter_k]
     def sharedKahyparOpts = [
         file_format: 'metis',
         edge_metadata_type: 'natural_edge',
@@ -94,39 +48,27 @@ workflow {
         [c_rating_edge_metadata: 'natural_edge_contribute_zero'],
         [c_rating_edge_metadata: 'natural_edge_contribute_negative'],
     ])
-    def kahyparOpts = ratingOpts.map { ratingOpt ->
-        sharedKahyparOpts + ratingOpt
+    def runs = graphs.combine(ratingOpts).map { graph, rating ->
+        tuple([graph: graph.baseName], graph, filterOpts, sharedKahyparOpts + rating)
     }
-    def kahyparInputs = naturalEdges
-        .combine(kahyparExecutable)
-        .combine(kahyparOpts)
-        .map { context, metadata, executable, opts ->
-            tuple(
-                context + [kahyparOpts: opts],
-                executable,
-                context.graphFile,
-                [],
-                metadata,
-                opts
-            )
-        }
-    
-    MT_KAHYPAR(kahyparInputs)
+    PARTITION_WITH_REGION_FILTER(runs, BUILD_PARTITIONING_TOOLS.out.region_filter, BUILD_PARTITIONING_TOOLS.out.mt_kahypar)
+    def naturalEdges = PARTITION_WITH_REGION_FILTER.out.natural_edges
 
     // Render each partition with the natural edges from its RegionFilter run
-    def reportGraphs = graphs.map { context, graph ->
+    def reportGraphs = naturalEdges.map { key, _edges ->
+        def graph = key.graphFile
         def xyz = graph.resolveSibling("${graph.baseName}.xyz")
         def coords = xyz.exists() ? xyz : file("${xyz}.bz2", checkIfExists: true)
-        tuple(context.graph, graph, coords)
+        tuple(key, graph, coords)
     }
 
     APPEND_TO_ROWS(naturalEdges, 0)
     def edgeMarks = APPEND_TO_ROWS.out.output.map { context, marks ->
-        tuple(context.graph, 'natural_edges', marks)
+        tuple(context, 'natural_edges', marks)
     }
-    INDEX_ROWS(MT_KAHYPAR.out.partition, 1)
+    INDEX_ROWS(PARTITION_WITH_REGION_FILTER.out.partitions, 1)
     def nodeMarks = INDEX_ROWS.out.output.map { context, marks ->
-        tuple(context.graph, context.kahyparOpts.c_rating_edge_metadata, marks)
+        tuple(context.filterKey, context.kahyparOpts.c_rating_edge_metadata, marks)
     }
     def reportSpecs = ratingOpts.map { opts ->
         def policy = opts.c_rating_edge_metadata
@@ -134,43 +76,51 @@ workflow {
     }
     RENDER_GRAPH_REPORTS(reportGraphs, nodeMarks, edgeMarks, reportSpecs, [coord_format: 'dimacs10-osm'])
 
+    // Publish only the graph and policy identifiers alongside the output files.
+    def filterLogs = PARTITION_WITH_REGION_FILTER.out.filter_logs.map { key, log -> tuple(key.graph, log) }
+    def edgeFiles = naturalEdges.map { key, edges -> tuple(key.graph, edges) }
+    def partitionFiles = PARTITION_WITH_REGION_FILTER.out.partitions.mix(
+        PARTITION_WITH_REGION_FILTER.out.partition_logs,
+        PARTITION_WITH_REGION_FILTER.out.results
+    ).map { context, artifact -> tuple(context.graph, context.kahyparOpts.c_rating_edge_metadata, artifact) }
+    def maps = RENDER_GRAPH_REPORTS.out.reports.map { context, report ->
+        tuple(context.graph.graph, context.report, report)
+    }
+
     // Publish results
     publish:
-    region_log = REGION_FILTER.out.log
-    natural_edges = naturalEdges
-    kahypar_results = MT_KAHYPAR.out.partition.mix(
-        MT_KAHYPAR.out.log,
-        MT_KAHYPAR.out.result
-    )
-    partition_maps = RENDER_GRAPH_REPORTS.out.reports
+    region_log = filterLogs
+    natural_edges = edgeFiles
+    kahypar_results = partitionFiles
+    partition_maps = maps
 }
 
 output {
     region_log {
         mode 'copy'
-        path { context, file ->
-            file >> "${context.graph}/region_filter.log"
+        path { graph, file ->
+            file >> "${graph}/region_filter.log"
         }
     }
 
     natural_edges {
         mode 'copy'
-        path { context, file ->
-            file >> "${context.graph}/natural_edges_metadata.txt"
+        path { graph, file ->
+            file >> "${graph}/natural_edges_metadata.txt"
         }
     }
 
     partition_maps {
         mode 'copy'
-        path { context, file ->
-            file >> "${context.graph}/${context.report}/${file.name}"
+        path { graph, policy, file ->
+            file >> "${graph}/${policy}/${file.name}"
         }
     }
 
     kahypar_results {
         mode 'copy'
-        path { context, file ->
-            file >> "${context.graph}/${context.kahyparOpts.c_rating_edge_metadata}/${file.name}"
+        path { graph, policy, file ->
+            file >> "${graph}/${policy}/${file.name}"
         }
     }
 }

@@ -1,7 +1,5 @@
 include { BUILD_PARTITIONING_TOOLS } from '../subworkflows/build_partitioning_tools.nf'
-include { PARTITION_WITH_REGION_FILTER } from '../subworkflows/partition_with_region_filter.nf'
-include { SPLIT_EDGES_BY_PARTITION } from '../modules/split_edges_by_partition.nf'
-include { IMPORT_SQLPLOT_RESULTS } from '../modules/import_sqlplot_results.nf'
+include { BENCHMARK_PARTITIONS } from '../subworkflows/benchmark_partitions.nf'
 
 params {
     repository: String = "${params.project_path}/mt-kahypar"
@@ -62,49 +60,15 @@ workflow {
             def key = [filter: filterKey, policy: rating.c_rating_edge_metadata, repetition: repetition]
             tuple(key, filterKey, sharedKahyparOpts + rating)
         }
-    def filterTools = BUILD_PARTITIONING_TOOLS.out.region_filter
-    def partitionTools = BUILD_PARTITIONING_TOOLS.out.mt_kahypar
-    PARTITION_WITH_REGION_FILTER(
-        filters, partitions,
-        filterTools.map { _commit, executable -> executable },
-        partitionTools.map { _commit, executable -> executable }
-    )
-
-    // Several partitions share the edges produced by one graph/filter repetition.
-    def naturalEdges = PARTITION_WITH_REGION_FILTER.out.natural_edges
-    def totals = naturalEdges.map { filterKey, edges -> tuple(filterKey, FileUtils.countRows(edges)) }
-    def edgeInputs = PARTITION_WITH_REGION_FILTER.out.partitions
-        .map { key, partition -> tuple(key.filter, key, partition) }
-        .combine(naturalEdges, by: 0)
-        .map { _filterKey, key, partition, edges -> tuple(key, partition, edges) }
-    SPLIT_EDGES_BY_PARTITION(edgeInputs)
-
-    def counts = SPLIT_EDGES_BY_PARTITION.out.between
-        .map { key, edges -> tuple(key.filter, key, FileUtils.countRows(edges)) }
-        .combine(totals, by: 0)
-        .map { _filterKey, key, cut, total -> tuple(key, cut, total) }
-
-    def records = PARTITION_WITH_REGION_FILTER.out.results
-        .join(counts, failOnDuplicate: true, failOnMismatch: true)
-        .combine(filterTools.map { commit, _executable -> commit })
-        .combine(partitionTools.map { commit, _executable -> commit })
-        .map { key, result, cut, total, filterCommit, partitionCommit ->
-            SqlPlotResult.withFields(result.text, [
-                natural_edges_cut: cut,
-                total_natural_edges: total,
-                graph_id: key.filter.graphId,
-                rating_policy: key.policy,
-                region_filter_k: filterOpts.k,
-                filter_repetition: key.filter.repetition,
-                repetition: key.repetition,
-                region_filter_commit: filterCommit,
-                mt_kahypar_commit: partitionCommit
-            ])
-        }.collectFile(name: 'runs.result', newLine: true, sort: true)
-    IMPORT_SQLPLOT_RESULTS(records, 'runs')
+    def metadata = partitions.map { key, filterKey, _opts ->
+        tuple(key, [graph_id: filterKey.graphId, rating_policy: key.policy,
+            region_filter_k: filterOpts.k, filter_repetition: filterKey.repetition, repetition: key.repetition])
+    }
+    BENCHMARK_PARTITIONS(filters, partitions, metadata,
+        BUILD_PARTITIONING_TOOLS.out.region_filter, BUILD_PARTITIONING_TOOLS.out.mt_kahypar)
 
     publish:
-    run_database = IMPORT_SQLPLOT_RESULTS.out.database
+    run_database = BENCHMARK_PARTITIONS.out.database
 }
 
 output {

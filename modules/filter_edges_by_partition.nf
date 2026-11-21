@@ -1,25 +1,27 @@
 /**
- * Selects candidate edges whose endpoints belong to different partition blocks.  
+ * Selects edge rows by the partition blocks of their endpoints.  
  *
  * **Inputs**  
  * `key`: Caller-supplied key, passed through unchanged.  
  * `partition`: One nonnegative integer block ID per line. Line 1 corresponds to node 1.  
  * `edges`: Whitespace-delimited rows with two 1-based node IDs in the first two columns.  
+ * `relation`: `between` for different blocks or `within` for the same block.  
  *
  * **Outputs**  
- * `output`: Matching rows in input order (`cut_edges.txt`). Extra columns and duplicates are preserved.  
- * Empty if no edges cross between blocks.  
- * `count`: Number of matching rows (`count.txt`), including zero.  
+ * `output`: Matching rows in input order (`output.txt`). Extra columns and duplicates are preserved.  
+ * Empty if no rows match.  
  */
-process FILTER_CUT_EDGES {
+process FILTER_EDGES_BY_PARTITION {
     input:
     tuple val(key), path(partition, stageAs: 'partition/input'), path(edges, stageAs: 'edges/input')
+    val(relation)
 
     output:
-    tuple val(key), path('cut_edges.txt'), emit: output
-    tuple val(key), path('count.txt'), emit: count
+    tuple val(key), path('output.txt'), emit: output
 
     script:
+    assert relation in ['between', 'within'] : "Expected relation 'between' or 'within'"
+
     def program = '''
         function fail(message) {
             print FILENAME ":" FNR ": " message > "/dev/stderr"
@@ -36,17 +38,13 @@ process FILTER_CUT_EDGES {
             u = $1 + 0
             v = $2 + 0
             if (u < 1 || u > nodes || v < 1 || v > nodes) fail("node ID outside partition")
-            if (block[u] != block[v]) {
-                print
-                count++
-            }
+            if ((block[u] == block[v]) == within) print
         }
-        END { printf "%.0f\\n", count + 0 > "count.txt" }
     '''.stripIndent()
     def command = new CommandBuilder('awk')
-        .add(program, partition, edges)
+        .add('-v', "within=${relation == 'within' ? 1 : 0}", program, partition, edges)
         .addUnwrapped('>')
-        .add('cut_edges.txt')
+        .add('output.txt')
 
     return new ScriptBuilder().addCommand(command).build()
 }

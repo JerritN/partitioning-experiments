@@ -1,6 +1,6 @@
 include { BUILD_PARTITIONING_TOOLS } from '../subworkflows/build_partitioning_tools.nf'
 include { PARTITION_WITH_REGION_FILTER } from '../subworkflows/partition_with_region_filter.nf'
-include { FILTER_CUT_EDGES } from '../modules/filter_cut_edges.nf'
+include { FILTER_EDGES_BY_PARTITION } from '../modules/filter_edges_by_partition.nf'
 include { IMPORT_SQLPLOT_RESULTS } from '../modules/import_sqlplot_results.nf'
 
 params {
@@ -71,19 +71,27 @@ workflow {
     )
 
     // Several partitions share the edges produced by one graph/filter repetition.
+    def naturalEdges = PARTITION_WITH_REGION_FILTER.out.natural_edges
+    def totals = naturalEdges.map { filterKey, edges -> tuple(filterKey, FileUtils.countRows(edges)) }
     def cutInputs = PARTITION_WITH_REGION_FILTER.out.partitions
         .map { key, partition -> tuple(key.filter, key, partition) }
-        .combine(PARTITION_WITH_REGION_FILTER.out.natural_edges, by: 0)
+        .combine(naturalEdges, by: 0)
         .map { _filterKey, key, partition, edges -> tuple(key, partition, edges) }
-    FILTER_CUT_EDGES(cutInputs)
+    FILTER_EDGES_BY_PARTITION(cutInputs, 'between')
+
+    def counts = FILTER_EDGES_BY_PARTITION.out.output
+        .map { key, edges -> tuple(key.filter, key, FileUtils.countRows(edges)) }
+        .combine(totals, by: 0)
+        .map { _filterKey, key, cut, total -> tuple(key, cut, total) }
 
     def records = PARTITION_WITH_REGION_FILTER.out.results
-        .join(FILTER_CUT_EDGES.out.count, failOnDuplicate: true, failOnMismatch: true)
+        .join(counts, failOnDuplicate: true, failOnMismatch: true)
         .combine(filterTools.map { commit, _executable -> commit })
         .combine(partitionTools.map { commit, _executable -> commit })
-        .map { key, result, countFile, filterCommit, partitionCommit ->
+        .map { key, result, cut, total, filterCommit, partitionCommit ->
             SqlPlotResult.withFields(result.text, [
-                natural_edges_cut: countFile.text.trim().toLong(),
+                natural_edges_cut: cut,
+                total_natural_edges: total,
                 graph_id: key.filter.graphId,
                 rating_policy: key.policy,
                 region_filter_k: filterOpts.k,

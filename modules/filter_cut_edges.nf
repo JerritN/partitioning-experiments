@@ -9,6 +9,7 @@
  * **Outputs**  
  * `output`: Matching rows in input order (`cut_edges.txt`). Extra columns and duplicates are preserved.  
  * Empty if no edges cross between blocks.  
+ * `count`: Number of matching rows (`count.txt`), including zero.  
  */
 process FILTER_CUT_EDGES {
     input:
@@ -16,6 +17,7 @@ process FILTER_CUT_EDGES {
 
     output:
     tuple val(key), path('cut_edges.txt'), emit: output
+    tuple val(key), path('count.txt'), emit: count
 
     script:
     def program = '''
@@ -34,8 +36,12 @@ process FILTER_CUT_EDGES {
             u = $1 + 0
             v = $2 + 0
             if (u < 1 || u > nodes || v < 1 || v > nodes) fail("node ID outside partition")
-            if (block[u] != block[v]) print
+            if (block[u] != block[v]) {
+                print
+                count++
+            }
         }
+        END { printf "%.0f\\n", count + 0 > "count.txt" }
     '''.stripIndent()
     def command = new CommandBuilder('awk')
         .add(program, partition, edges)

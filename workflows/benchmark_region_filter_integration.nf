@@ -1,5 +1,6 @@
 include { BUILD_PARTITIONING_TOOLS } from '../subworkflows/build_partitioning_tools.nf'
 include { PARTITION_WITH_REGION_FILTER } from '../subworkflows/partition_with_region_filter.nf'
+include { FILTER_CUT_EDGES } from '../modules/filter_cut_edges.nf'
 include { IMPORT_SQLPLOT_RESULTS } from '../modules/import_sqlplot_results.nf'
 
 params {
@@ -69,11 +70,20 @@ workflow {
         partitionTools.map { _commit, executable -> executable }
     )
 
+    // Several partitions share the edges produced by one graph/filter repetition.
+    def cutInputs = PARTITION_WITH_REGION_FILTER.out.partitions
+        .map { key, partition -> tuple(key.filter, key, partition) }
+        .combine(PARTITION_WITH_REGION_FILTER.out.natural_edges, by: 0)
+        .map { _filterKey, key, partition, edges -> tuple(key, partition, edges) }
+    FILTER_CUT_EDGES(cutInputs)
+
     def records = PARTITION_WITH_REGION_FILTER.out.results
+        .join(FILTER_CUT_EDGES.out.count, failOnDuplicate: true, failOnMismatch: true)
         .combine(filterTools.map { commit, _executable -> commit })
         .combine(partitionTools.map { commit, _executable -> commit })
-        .map { key, result, filterCommit, partitionCommit ->
+        .map { key, result, countFile, filterCommit, partitionCommit ->
             SqlPlotResult.withFields(result.text, [
+                natural_edges_cut: countFile.text.trim().toLong(),
                 graph_id: key.filter.graphId,
                 rating_policy: key.policy,
                 region_filter_k: filterOpts.k,

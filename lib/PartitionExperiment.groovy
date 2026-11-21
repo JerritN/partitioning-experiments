@@ -48,60 +48,26 @@ class PartitionExperiment {
         }
     }
 
-    private static Map stage(Object config, String tool) {
-        checkMap(config, ['defaults', 'variants', 'repetitions'], tool)
-        def defaults = config.getOrDefault('defaults', [:])
-        checkOptions(defaults, tool, "${tool}.defaults")
-        def reps = config.getOrDefault('repetitions', 1)
-        require(reps instanceof Integer && reps > 0, "${tool}.repetitions must be a positive integer")
-        require(config.variants instanceof Map && !config.variants.isEmpty(), "${tool}.variants must name at least one variant")
-        def variants = config.variants.collectEntries { name, overrides ->
-            def where = "${tool}.variants.${name}"
-            require(label(name) && overrides instanceof Map, "Expected a named option map at ${where}")
-            def opts = defaults + overrides
-            if (tool == 'mt_kahypar') {
-                opts = [file_format: 'metis', edge_metadata_type: 'natural_edge', c_rating_edge_metadata: 'ignore'] + opts
-            }
-            checkOptions(opts, tool, where)
-            if (tool == 'region_filter') {
-                require(opts.containsKey('k') != opts.containsKey('U'), "${where} requires exactly one of k or U")
-                require((opts.k ?: opts.U ?: 0) > 0, "${where} requires positive k or U")
-                require(opts.eps == null || opts.k != null, "${where}.eps requires k")
-                require(!opts.no_fallback || opts.closed, "${where}.no_fallback requires closed")
-            } else {
-                require(opts.blocks != null && opts.blocks > 0 && opts.epsilon != null && opts.epsilon >= 0 &&
-                    opts.objective != null && opts.preset_type != null, "${where} requires blocks, epsilon, objective and preset_type")
-                require(opts.file_format == 'metis' && opts.edge_metadata_type == 'natural_edge', "${where} requires METIS input and natural_edge metadata")
-                require(opts.threads == null || opts.threads > 0, "${where}.threads must be positive")
-            }
-            [(name): opts]
+    /** Validate and complete the options used by this specific integration workflow. */
+    static Map options(String tool, String variant, Map supplied) {
+        def where = "${tool}.${variant}"
+        def opts = supplied
+        if (tool == 'mt_kahypar') {
+            opts = [file_format: 'metis', edge_metadata_type: 'natural_edge', c_rating_edge_metadata: 'ignore'] + opts
         }
-        [variants: variants, repetitions: reps]
-    }
-
-    static Map parse(Map experiment) {
-        checkMap(experiment, ['name','graphs','region_filter','mt_kahypar','comparisons'], 'experiment')
-        require(label(experiment.name), 'experiment.name must be a nonempty string')
-        def graphs = experiment.graphs
-        require(graphs instanceof List && !graphs.empty && graphs.every { label(it) } &&
-            graphs.toSet().size() == graphs.size(), 'experiment.graphs must list distinct graph paths')
-        def filter = stage(experiment.region_filter, 'region_filter')
-        def partition = stage(experiment.mt_kahypar, 'mt_kahypar')
-        def pairs = experiment.getOrDefault('comparisons', null)
-        if (!experiment.containsKey('comparisons')) {
-            pairs = filter.variants.keySet().collectMany { f ->
-                partition.variants.keySet().collect { p -> [filter: f, partition: p] }
-            }
+        checkOptions(opts, tool, where)
+        if (tool == 'region_filter') {
+            require(opts.containsKey('k') != opts.containsKey('U'), "${where} requires exactly one of k or U")
+            require((opts.k ?: opts.U ?: 0) > 0, "${where} requires positive k or U")
+            require(opts.eps == null || opts.k != null, "${where}.eps requires k")
+            require(!opts.no_fallback || opts.closed, "${where}.no_fallback requires closed")
+        } else {
+            require(opts.blocks != null && opts.blocks > 0 && opts.epsilon != null && opts.epsilon >= 0 &&
+                opts.objective != null && opts.preset_type != null, "${where} requires blocks, epsilon, objective and preset_type")
+            require(opts.file_format == 'metis' && opts.edge_metadata_type == 'natural_edge', "${where} requires METIS input and natural_edge metadata")
+            require(opts.threads == null || opts.threads > 0, "${where}.threads must be positive")
         }
-        require(pairs instanceof List && !pairs.empty, 'comparisons must contain at least one pair')
-        pairs.each { pair ->
-            checkMap(pair, ['filter','partition'], 'comparisons')
-            require(filter.variants.containsKey(pair.filter) && partition.variants.containsKey(pair.partition),
-                "Unknown filter or partition variant in ${pair}")
-        }
-        require(pairs.toSet().size() == pairs.size(), 'Duplicate filter/partition comparison')
-        [name: experiment.name, graphs: graphs, filter: filter, partition: partition,
-            comparisons: pairs.groupBy { it.filter }.collectEntries { f, group -> [(f): group*.partition] }]
+        return opts
     }
 
     static String optionsJson(Map options) {

@@ -1,26 +1,41 @@
-// Run from the repository root: nextflow run tests/linear_experiment.nf
+// Run from the repository root with nextflow run tests/linear_experiment.nf
 workflow {
-    def first = [id: 'a', tool: 'custom', defaults: [weights: [1, 2], limit: 1],
-        variants: [x: [:], y: [limit: 3]], repetitions: 2]
-    def single = LinearExperiment.plan([first])[0].trials
-    assert single.size() == 4 && single.every { it.parentKey == null }
-    assert single.last().options == [weights: [1, 2], limit: 3]
-
-    def middle = [id: 'b', tool: 'custom', repetitions: 2]
-    def last = [id: 'c', tool: 'measure', variants: [low: [:], high: [:]]]
-    def stages = [first, middle, last]
-    def grid = LinearExperiment.plan(stages)
-    assert grid*.trials*.size() == [4, 8, 16]
-
-    // The narrow selection overlaps the first, and the middle stage is unrestricted.
-    def plan = LinearExperiment.plan(stages, [[a: 'x', c: 'low'], [a: 'x', b: 'default', c: 'low'], [a: 'y', c: 'high']])
-    assert plan*.trials*.size() == [4, 8, 8]
-    assert plan[2].trials.every { run ->
-        run.variant == (run.key.first().variant == 'x' ? 'low' : 'high')
+    def experiment = [
+        name: 'planner-test',
+        dimensions: [graph: ['a','b'], size: [s: [k: 2, blocks: 4], l: [k: 4, blocks: 8]],
+            policy: [true,false], run: [1,2,3]],
+        stages: [[tool: 'input', options: [path: '${graph}']],
+            [tool: 'custom', options: [k: '${size.k}']],
+            [tool: 'custom', vary: ['run'], options: [nested: ['${size.blocks}', '${policy}']]]]
+    ]
+    def plan = LinearExperiment.plan(experiment)
+    assert plan*.requests*.size() == [2,4,24]
+    assert plan.first().requests.every { it.parentKey == null }
+    assert plan.last().requests.every { trial ->
+        def parent = plan[1].requests.find { it.key == trial.parentKey }
+        parent && trial.options.nested == [2 * parent.options.k, trial.choices.policy]
     }
-    (1..<plan.size()).each { i ->
-        def parents = plan[i-1].trials*.key.toSet()
-        assert plan[i].trials.every { parents.contains(it.parentKey) }
-        assert plan[i].trials*.key.toSet().size() == plan[i].trials.size()
+    def selectors = [[graph: 'a', policy: false], [graph: 'a', size: 's', policy: false]]
+    def selected = LinearExperiment.plan(experiment + [selections: selectors])
+    assert selected*.requests*.size() == [1,2,6]
+    assert selected.last().requests*.key.toSet().size() == 6
+    def stages = experiment.stages.collect { it + [:] }
+    stages[1].id = 'filter'
+    stages[1].vary = ['run']
+    def paired = LinearExperiment.plan(experiment + [stages: stages])
+    assert paired*.requests*.size() == [2,12,24]
+    assert paired.last().requests*.key.toSet() == plan.last().requests*.key.toSet()
+    assert LinearExperiment.plan([name:'fixed', stages:[[tool:'input']]])[0].requests.size() == 1
+    def bad = [experiment + [selections: [[graph:'missing']]],
+        experiment + [stages: [[tool:'input', options:[x:'${missing}']]]],
+        [name:'bad', stages:[[tool:'input', options:[x:'${size.other}']]],
+            dimensions:[size:[s:[k:2]]]]]
+    bad.each { spec ->
+        try {
+            LinearExperiment.plan(spec)
+            assert false : 'Invalid experiment was accepted'
+        } catch (IllegalArgumentException expected) {
+            assert expected.message
+        }
     }
 }

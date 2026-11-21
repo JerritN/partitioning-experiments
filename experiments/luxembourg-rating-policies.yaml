@@ -1,0 +1,18 @@
+experiment:
+  name: luxembourg-rating-policies
+  graphs: [luxembourg.osm.graph]
+
+  region_filter:
+    defaults: {k: 8}
+    variants:
+      standard: {}
+    repetitions: 1
+
+  mt_kahypar:
+    defaults: {blocks: 8, epsilon: 0.03, objective: cut, preset_type: default, threads: 4}
+    variants:
+      baseline: {c_rating_edge_metadata: ignore}
+      skip: {c_rating_edge_metadata: skip_natural_edge}
+      zero: {c_rating_edge_metadata: natural_edge_contribute_zero}
+      negative: {c_rating_edge_metadata: natural_edge_contribute_negative}
+    repetitions: 5

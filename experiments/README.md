@@ -1,73 +1,63 @@
 # Linear experiment files
 
-An experiment describes a sequence of stages. Each workflow chooses which sequences it can execute, how to supply inputs, and which results to publish. The RegionFilter integration workflow takes METIS graphs and executes `region_filter` followed by `mt_kahypar`.
-
-Run the [Luxembourg example](luxembourg-rating-policies.yaml) from the repository root with the same machine configuration and SQLite-enabled sqlplot-tools installation as the CLI benchmark:
+Pass a standalone YAML document with `--experiment`. Machine settings such as graph directories, compiler settings and tool revisions still come from Nextflow configuration or command-line flags. From the repository root, with the same machine configuration and SQLite-enabled sqlplot-tools as the CLI benchmark, run the [Luxembourg example](luxembourg-rating-policies.yaml):
 
 ```bash
 nextflow run workflows/experiment_region_filter_integration.nf \
-  -params-file experiments/luxembourg-rating-policies.yaml \
+  --experiment experiments/luxembourg-rating-policies.yaml \
   --graph_dir "$HOME/data" \
   -output-dir results/luxembourg-rating-policies
 ```
 
-This runs one filter trial and twenty partitions. The original CLI benchmark is also available. To migrate a file from the earlier prototype, move each tool's configuration into the ordered `stages` list, add its `tool`, and give it the `id` used in your comparisons.
+The example runs one RegionFilter trial and shares its output across four rating policies with five Mt-KaHyPar runs each.
 
-## Stage definitions
+## Defining experiments
 
-| Field | Meaning |
-|---|---|
-| `stages` | Nonempty list in execution order. Each trial consumes its immediate parent's result. |
-| `id` | Unique stage name within this experiment, used in comparisons. |
-| `tool` | Name interpreted by the workflow. A chain can use the same tool at multiple stage IDs. |
-| `defaults` | Stage option map, empty by default. |
-| `variants` | Named option maps. Each overrides the defaults by top-level option name. Omit for one variant named `default`. A list-valued option is passed as one value. |
-| `repetitions` | Positive number of executions per selected variant **per parent trial**. Defaults to one. Each repetition keeps its variant's options, including the seed. |
-| `comparisons` | Optional list of selections mapping stage IDs to variant names. Each selection permits all combinations at unspecified stages. The union of the selections runs once. Omit for the full cross product. |
+Give the experiment a `name` and list its `stages` in execution order. Each stage has a `tool`, an optional descriptive `id`, and an optional `options` map. Stage positions identify calls, so a chain can use a tool more than once. IDs supplied explicitly must be unique.
 
-For example, this fragment pairs two filter settings with two partition settings:
+Declare alternatives under `dimensions`. A list of scalar values uses each value as its own label. A map gives each choice an explicit label and value. Use a record as the value to couple different settings across tools:
 
 ```yaml
-  stages:
-    - id: filter
-      tool: region_filter
-      variants:
-        small: {k: 4}
-        large: {k: 8}
-    - id: partition
-      tool: mt_kahypar
-      defaults: {epsilon: 0.03, objective: cut, preset_type: default}
-      variants:
-        four: {blocks: 4}
-        eight: {blocks: 8}
-  comparisons:
-    - {filter: small, partition: four}
-    - {filter: large, partition: eight}
+dimensions:
+  size:
+    small: {filter_k: 4, blocks: 8}
+    large: {filter_k: 8, blocks: 16}
+  policy: [ignore, skip_natural_edge]
+  run: [1, 2, 3]
 ```
 
-The same selection syntax works across nonadjacent stages. If a workflow adds a stage between `filter` and `partition`, each matching combination runs through every selected variant and repetition of that middle stage. Each filter trial executes once regardless of how many downstream trials use it.
+Reference a dimension in a stage option with `${policy}` or a record field with `${size.filter_k}`. Put the reference in quotes when writing inline YAML maps. The reference occupies the whole value and preserves its type, including inside lists or nested maps. Supply literal options directly. For the example above, bind the filter's `k` to `${size.filter_k}` and the partitioner's `blocks` to `${size.blocks}` to keep the two settings paired.
 
-## Plan contract for workflow authors
+A dimension expands the first time a stage references it or lists it under `vary`. Later stages inherit that choice. Independent dimensions form a cross product. For three partition runs per filter output, add `vary: [run]` to the partition stage. For three independently repeated filter outputs, move it to the filter stage. For three partition runs under *each* repeated filter, declare two repetition dimensions and introduce one at each stage. Repetitions leave tool options, including seeds, as specified.
 
-Call `LinearExperiment.plan(stages, comparisons)` once for an input-independent plan. It returns one batch per stage in declaration order. Each batch contains its `id`, `tool`, `repetitions` and `trials`. Each trial contains:
+Optional `selections` restrict which combinations run. Each entry matches choice labels, omitted dimensions are unrestricted, and overlapping entries contribute a run only once. For the dimensions above:
 
-- `key`: the ordered path of `(stage, variant, repetition)` records from the first stage through this one.
-- `parentKey`: the immediate predecessor's key, or null for first-stage trials.
-- `variant`, `repetition`, `options`: the local variant name, one-based repetition, and merged option map.
+```yaml
+selections:
+  - {size: small}
+  - {policy: ignore}
+```
 
-A workflow can iterate the batches in order or match outputs by key. When applying a plan to several inputs, pair each trial key and parent key with the same input ID. This preserves sharing and keeps runs on different inputs distinct. Single-stage workflows just consume the first batch. The planner has no dependency on Nextflow channels, graph files, executables, or tool option schemas.
+This runs both policies for the small size and only `ignore` for the large size. With a single graph and three partition repetitions, it creates two filter calls and nine partition calls.
+
+## Plan contract
+
+`ExperimentFile.read(path)` loads the YAML as a map. `LinearExperiment.plan(map)` validates the structure and returns one batch per stage, in order. A workflow can pass an expected list of tool names as a second argument to validate its chain before expansion. The planner performs no file access and accepts arbitrary chain lengths.
+
+Each batch has `tool`, `id` (defaults to the tool name), and `requests`. Each request contains resolved `options`, inherited and newly bound choice labels in `choices`, an opaque `key`, and the immediate predecessor's `parentKey` (null for the first stage). Join requests to outputs by those keys. Each upstream request appears once even when several children share it. The executing workflow validates selected options and resolves input files before launching tools.
 
 ## RegionFilter integration
 
-Within `experiment`, supply a `name` and distinct `graphs` paths resolved against `--graph_dir`. The integration validates the stage sequence, graph files and selected options before building. The parser accepts other chains, such as PunchFilter followed by Mt-KaHyPar, for workflows that implement them.
+This workflow expects `metis_graph`, `region_filter`, and `mt_kahypar`, in that order. The graph stage takes a `path` resolved against `--graph_dir`. See the [RegionFilter](../modules/region_filter.nf) and [Mt-KaHyPar](../modules/mt_kahypar.nf) processes for option names. RegionFilter requires exactly one of `k` and `U`. Mt-KaHyPar requires `blocks`, `epsilon`, `objective` and `preset_type`. The workflow supplies METIS format, natural-edge metadata and the default rating policy `ignore`.
 
-Use the option names in the [RegionFilter](../modules/region_filter.nf) and [Mt-KaHyPar](../modules/mt_kahypar.nf) processes. RegionFilter requires exactly one of `k` and `U`. Mt-KaHyPar requires `blocks`, `epsilon`, `objective` and `preset_type`. The integration supplies `file_format: metis`, `edge_metadata_type: natural_edge` and the default rating policy `ignore`. Repository paths, pinned tool revisions and build options use the existing Nextflow configuration.
-
-The only published file is `runs.sqlite`. The `runs` table includes experiment and variant names, repetitions, resolved commits, merged options as JSON, natural-edge counts and native partition measurements.
+The workflow publishes `runs.sqlite`. Its `runs` table includes graph path, selected dimension labels, resolved tool options, tool revisions, native partition measurements and natural-edge counts. For the supplied example:
 
 ```sql
-SELECT graph_id, filter_variant, partition_variant, COUNT(*) AS trials,
-       AVG(cut) AS mean_cut, AVG(natural_edges_cut) AS mean_natural_edges_cut
+SELECT graph_id, json_extract(dimension_choices, '$.size') AS size_label,
+       rating_policy, COUNT(*) AS runs, AVG(cut) AS mean_cut,
+       AVG(natural_edges_cut) AS mean_natural_edges_cut
 FROM runs
-GROUP BY experiment_name, graph_id, filter_variant, partition_variant;
+GROUP BY experiment_name, graph_id, size_label, rating_policy;
 ```
+
+To migrate an earlier experiment, remove the outer `experiment` wrapper, move graph paths into the first stage, put constant defaults in `options`, and turn variants and repetition counts into dimensions. Replace stage-based comparisons with selections on dimension labels.

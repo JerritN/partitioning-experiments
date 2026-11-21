@@ -48,9 +48,19 @@ class PartitionExperiment {
         }
     }
 
+    static List prepare(Map batch) {
+        def checked = [:]
+        batch.requests.collect { trial ->
+            if (!checked.containsKey(trial.options)) {
+                def where = "${batch.id} for ${trial.choices}"
+                checked[trial.options] = options(batch.tool, where, trial.options)
+            }
+            trial + [options: checked[trial.options]]
+        }
+    }
+
     /** Validate and complete the options used by this specific integration workflow. */
-    static Map options(String tool, String variant, Map supplied) {
-        def where = "${tool}.${variant}"
+    private static Map options(String tool, String where, Map supplied) {
         def opts = supplied
         if (tool == 'mt_kahypar') {
             opts = [file_format: 'metis', edge_metadata_type: 'natural_edge', c_rating_edge_metadata: 'ignore'] + opts

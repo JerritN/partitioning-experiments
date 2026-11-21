@@ -1,20 +1,27 @@
-experiment:
-  name: luxembourg-rating-policies
-  graphs: [luxembourg.osm.graph]
+name: luxembourg-rating-policies
 
-  stages:
-    - id: filter
-      tool: region_filter
-      defaults: {k: 8}
-      variants:
-        standard: {}
-      repetitions: 1
-    - id: partition
-      tool: mt_kahypar
-      defaults: {blocks: 8, epsilon: 0.03, objective: cut, preset_type: default, threads: 4}
-      variants:
-        baseline: {c_rating_edge_metadata: ignore}
-        skip: {c_rating_edge_metadata: skip_natural_edge}
-        zero: {c_rating_edge_metadata: natural_edge_contribute_zero}
-        negative: {c_rating_edge_metadata: natural_edge_contribute_negative}
-      repetitions: 5
+dimensions:
+  graph: {lux: luxembourg.osm.graph}
+  size:
+    eight: {filter_k: 8, blocks: 8}
+  policy:
+    baseline: ignore
+    skip: skip_natural_edge
+    zero: natural_edge_contribute_zero
+    negative: natural_edge_contribute_negative
+  run: [1, 2, 3, 4, 5]
+
+stages:
+  - tool: metis_graph
+    options: {path: "${graph}"}
+  - tool: region_filter
+    options: {k: "${size.filter_k}"}
+  - tool: mt_kahypar
+    vary: [run]
+    options:
+      blocks: "${size.blocks}"
+      c_rating_edge_metadata: "${policy}"
+      epsilon: 0.03
+      objective: cut
+      preset_type: default
+      threads: 4

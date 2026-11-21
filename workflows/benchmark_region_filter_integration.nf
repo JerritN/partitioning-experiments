@@ -1,6 +1,6 @@
 include { BUILD_PARTITIONING_TOOLS } from '../subworkflows/build_partitioning_tools.nf'
 include { PARTITION_WITH_REGION_FILTER } from '../subworkflows/partition_with_region_filter.nf'
-include { FILTER_EDGES_BY_PARTITION } from '../modules/filter_edges_by_partition.nf'
+include { SPLIT_EDGES_BY_PARTITION } from '../modules/split_edges_by_partition.nf'
 include { IMPORT_SQLPLOT_RESULTS } from '../modules/import_sqlplot_results.nf'
 
 params {
@@ -73,13 +73,13 @@ workflow {
     // Several partitions share the edges produced by one graph/filter repetition.
     def naturalEdges = PARTITION_WITH_REGION_FILTER.out.natural_edges
     def totals = naturalEdges.map { filterKey, edges -> tuple(filterKey, FileUtils.countRows(edges)) }
-    def cutInputs = PARTITION_WITH_REGION_FILTER.out.partitions
+    def edgeInputs = PARTITION_WITH_REGION_FILTER.out.partitions
         .map { key, partition -> tuple(key.filter, key, partition) }
         .combine(naturalEdges, by: 0)
         .map { _filterKey, key, partition, edges -> tuple(key, partition, edges) }
-    FILTER_EDGES_BY_PARTITION(cutInputs, 'between')
+    SPLIT_EDGES_BY_PARTITION(edgeInputs)
 
-    def counts = FILTER_EDGES_BY_PARTITION.out.output
+    def counts = SPLIT_EDGES_BY_PARTITION.out.between
         .map { key, edges -> tuple(key.filter, key, FileUtils.countRows(edges)) }
         .combine(totals, by: 0)
         .map { _filterKey, key, cut, total -> tuple(key, cut, total) }

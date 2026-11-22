@@ -8,12 +8,6 @@ class LinearExperiment {
         value instanceof String && !value.trim().isEmpty()
     }
 
-    private static void fields(value, List allowed, String where) {
-        require(value instanceof Map, "Expected a map at ${where}")
-        def unknown = value.keySet() - allowed
-        require(unknown.isEmpty(), "Unknown fields at ${where}: ${unknown}")
-    }
-
     private static boolean scalar(value) {
         named(value) || value instanceof Number || value instanceof Boolean
     }
@@ -36,16 +30,15 @@ class LinearExperiment {
         resolve(match.group(1).tokenize('.'))
     }
 
-    static List plan(Map experiment, List expectedTools = null) {
-        fields(experiment, ['name', 'dimensions', 'stages', 'selections'], 'experiment')
-        require(named(experiment.name), 'Expected an experiment name')
-        def rawDimensions = experiment.getOrDefault('dimensions', [:])
+    static Map dimensions(rawDimensions) {
         require(rawDimensions instanceof Map, 'dimensions must be a map')
-        def dimensions = rawDimensions.collectEntries { dim, raw ->
+        return rawDimensions.collectEntries { dim, raw ->
             require(dim instanceof String && dim ==~ /[A-Za-z_][A-Za-z0-9_]*/, "Invalid dimension name: ${dim}")
             [(dim): dimensionChoices(raw, dim)]
         }
-        def selectors = experiment.getOrDefault('selections', [[:]])
+    }
+
+    static void checkSelections(selectors, Map dimensions) {
         require(selectors instanceof List && !selectors.empty, 'selections must be a nonempty list')
         selectors.each { selector ->
             require(selector instanceof Map, 'Each selection must be a map of dimension labels')
@@ -53,14 +46,16 @@ class LinearExperiment {
                 require(dimensions[dim]?.containsKey(label) == true, "Unknown selection: ${dim}=${label}")
             }
         }
+    }
 
-        require(experiment.stages instanceof List && !experiment.stages.empty, 'Expected an ordered list of stages')
+    static List stages(rawStages, Map dimensions) {
+        require(rawStages instanceof List && !rawStages.empty, 'Expected an ordered list of stages')
         def batches = []
         def used = [] as Set
         def ids = [] as Set
-        experiment.stages.eachWithIndex { stage, index ->
+        rawStages.eachWithIndex { stage, index ->
             def where = "stage ${index + 1}"
-            fields(stage, ['id','tool','options','vary'], where)
+            OptionChecks.checkMap(stage, ['id','tool','options','vary'], where)
             require(named(stage.tool), "${where} requires a tool")
             if (stage.containsKey('id')) {
                 require(named(stage.id) && ids.add(stage.id), "Invalid or duplicate stage id at ${where}: ${stage.id}")
@@ -76,42 +71,52 @@ class LinearExperiment {
         }
         def unused = dimensions.keySet() - used
         require(unused.isEmpty(), "Dimensions unused by options or vary: ${unused}")
-        if (expectedTools != null) {
-            require(batches*.tool == expectedTools, "Expected stages ${expectedTools}; received ${batches*.tool}")
-        }
+        return batches
+    }
 
+    private static boolean canMatch(Map choices, List selections) {
+        selections.any { selection ->
+            selection.every { dim, label -> !choices.containsKey(dim) || choices[dim] == label }
+        }
+    }
+
+    // Expand only dimensions first introduced here. Later stages inherit these choices.
+    private static List bindings(Map inherited, Set dependencies, Map dimensions, List selections) {
+        def rows = [inherited]
+        for (dim in dependencies - inherited.keySet()) {
+            rows = rows.collectMany { row ->
+                dimensions[dim].keySet().collect { label -> row + [(dim): label] }
+                    .findAll { choices -> canMatch(choices, selections) }
+            }
+        }
+        return rows
+    }
+
+    private static Object resolve(List path, Map dimensions, Map choices, int position) {
+        def dim = path.first()
+        def value = dimensions[dim][choices[dim]]
+        path.tail().each { field ->
+            require(value instanceof Map && value.containsKey(field),
+                "Missing ${path.join('.')} for ${dim}=${choices[dim]} at stage ${position}")
+            value = value[field]
+        }
+        value
+    }
+
+    static List plan(Map dimensions, List stages, List selections) {
         def parents = [[key: null, choices: [:]]]
-        def plan = []
-        batches.eachWithIndex { stage, index ->
-            def requests = []
-            parents.each { parent ->
-                def bindings = [parent.choices]
-                for (dim in stage.dependencies - parent.choices.keySet()) {
-                    bindings = bindings.collectMany { choices ->
-                        dimensions[dim].keySet().findResults { label ->
-                            def next = choices + [(dim): label]
-                            selectors.any { s -> s.every { k, v -> !next.containsKey(k) || next[k] == v } } ? next : null
-                        }
-                    }
-                }
-                bindings.each { choices ->
-                    def options = references(stage.options) { path ->
-                        def dim = path.first()
-                        def value = dimensions[dim][choices[dim]]
-                        path.tail().each { field ->
-                            require(value instanceof Map && value.containsKey(field),
-                                "Missing ${path.join('.')} for ${dim}=${choices[dim]} at stage ${index + 1}")
-                            value = value[field]
-                        }
-                        value
-                    }
-                    requests << [key: [stage: index + 1, choices: choices], parentKey: parent.key,
-                        options: options, choices: choices]
+        def batches = []
+        stages.eachWithIndex { stage, index ->
+            int position = index + 1
+            def requests = parents.collectMany { parent ->
+                bindings(parent.choices, stage.dependencies, dimensions, selections).collect { choices ->
+                    def options = references(stage.options) { path -> resolve(path, dimensions, choices, position) }
+                    [key: [stage: position, choices: choices], parentKey: parent.key, options: options, choices: choices]
                 }
             }
-            plan << [id: stage.id, tool: stage.tool, requests: requests]
+            batches << [id: stage.id, tool: stage.tool, requests: requests]
             parents = requests
         }
-        plan
+        return batches
     }
 }

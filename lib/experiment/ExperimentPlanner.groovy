@@ -14,53 +14,33 @@ class ExperimentPlanner {
     }
 
     private Experiment expandStages() {
-        def dimensionsByStage = validateDefinition()
+        checkSelectionLabels()
+        def explicitIds = new HashSet()
+        def unusedDimensions = new LinkedHashSet(definition.dimensions.keySet())
         def stages = []
         def upstreamRuns = [new PlannedRun(null, null, [:], [:])]
         definition.stages.eachWithIndex { stage, index ->
-            def planned = planStage(stage, index + 1, upstreamRuns, dimensionsByStage[index])
+            if (stage.id != null)
+                Assertions.assertThat(explicitIds.add(stage.id), "Duplicate stage id: ${stage.id}")
+            def usedDimensions = new LinkedHashSet(stage.vary)
+            collectReferencedDimensions(stage.inputTemplate, usedDimensions)
+            def unknown = usedDimensions - definition.dimensions.keySet()
+            Assertions.assertThat(unknown.isEmpty(), "Unknown dimensions for ${stage.tool}: ${unknown}")
+            unusedDimensions.removeAll(usedDimensions)
+            def planned = planStage(stage, index + 1, upstreamRuns, usedDimensions)
             stages << planned
             upstreamRuns = planned.runs
         }
+        Assertions.assertThat(unusedDimensions.isEmpty(), "Unused dimensions: ${unusedDimensions}")
         return new Experiment(definition.name, stages)
     }
 
-    private List<Set> validateDefinition() {
-        Assertions.assertThat(definition.name?.trim() as boolean, 'Expected an experiment name')
-        def stages = definition.stages
-        Assertions.assertThat(stages && stages.every { it instanceof StageDefinition }, 'Expected at least one stage definition')
-        def dimensions = definition.dimensions
-        Assertions.assertThat(dimensions != null, 'Expected a dimensions map')
-        dimensions.each { dimension, choices ->
-            Assertions.assertThat(dimension instanceof String && dimension ==~ /[A-Za-z_][A-Za-z0-9_]*/, "Invalid dimension name: ${dimension}")
-            Assertions.assertThat(choices instanceof Map && !choices.isEmpty() && choices.keySet().every { validLabel(it) },
-                "Expected named choices for dimension ${dimension}")
-        }
-        def ids = stages*.id.findAll { it != null }
-        Assertions.assertThat(ids.size() == ids.toSet().size(), "Duplicate stage ids: ${ids}")
-        def dimensionsByStage = stages.collect { stage ->
-            Assertions.assertThat(stage.tool?.trim() && (stage.id == null || stage.id.trim()), 'Expected nonempty stage names')
-            Assertions.assertThat(stage.inputTemplate != null && stage.vary != null, "Expected inputs and vary for ${stage.tool}")
-            def used = new LinkedHashSet(stage.vary)
-            collectReferencedDimensions(stage.inputTemplate, used)
-            def unknown = used - dimensions.keySet()
-            Assertions.assertThat(unknown.isEmpty(), "Unknown dimensions for ${stage.tool}: ${unknown}")
-            return used
-        }
-        def unused = dimensions.keySet() - dimensionsByStage.flatten()
-        Assertions.assertThat(unused.isEmpty(), "Unused dimensions: ${unused}")
-        def selections = definition.selections
-        Assertions.assertThat(selections && selections.every { it instanceof Map }, 'Expected a nonempty list of selection maps')
-        selections.each { selection ->
+    private void checkSelectionLabels() {
+        definition.selections.each { selection ->
             selection.each { dim, label ->
-                Assertions.assertThat(dimensions[dim]?.containsKey(label) == true, "Unknown selection: ${dim}=${label}")
+                Assertions.assertThat(definition.dimensions[dim]?.containsKey(label) == true, "Unknown selection: ${dim}=${label}")
             }
         }
-        return dimensionsByStage
-    }
-
-    private static boolean validLabel(value) {
-        (value instanceof String && value.trim()) || value instanceof Number || value instanceof Boolean
     }
 
     private static void collectReferencedDimensions(value, Set used) {

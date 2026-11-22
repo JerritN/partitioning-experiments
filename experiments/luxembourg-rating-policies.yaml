@@ -1,7 +1,8 @@
 name: luxembourg-rating-policies
 
 dimensions:
-  graph: {lux: luxembourg.osm.graph}
+  graph:
+    lux: luxembourg.osm.graph
   size:
     eight: {filter_k: 8, blocks: 8}
   policy:

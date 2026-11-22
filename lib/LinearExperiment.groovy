@@ -20,7 +20,7 @@ class LinearExperiment {
         raw.collectEntries { value -> [(value): value] }
     }
 
-    // Apply the same reference syntax when discovering dependencies and resolving options.
+    // Apply the same reference syntax when discovering dependencies and resolving inputs.
     private static Object references(value, Closure resolve) {
         if (value instanceof Map) return value.collectEntries { k, v -> [(k): references(v, resolve)] }
         if (value instanceof List) return value.collect { references(it, resolve) }
@@ -55,22 +55,22 @@ class LinearExperiment {
         def ids = [] as Set
         rawStages.eachWithIndex { stage, index ->
             def where = "stage ${index + 1}"
-            OptionChecks.checkMap(stage, ['id','tool','options','vary'], where)
+            OptionChecks.checkMap(stage, ['id','tool','inputs','vary'], where)
             require(named(stage.tool), "${where} requires a tool")
             if (stage.containsKey('id')) {
                 require(named(stage.id) && ids.add(stage.id), "Invalid or duplicate stage id at ${where}: ${stage.id}")
             }
-            def options = stage.getOrDefault('options', [:])
+            def inputs = stage.getOrDefault('inputs', [:])
             def vary = stage.getOrDefault('vary', [])
-            require(options instanceof Map && vary instanceof List, "${where} requires an options map and a vary list")
+            require(inputs instanceof Map && vary instanceof List, "${where} requires an inputs map and a vary list")
             def dependencies = new LinkedHashSet(vary)
-            references(options) { path -> dependencies.add(path.first()) }
+            references(inputs) { path -> dependencies.add(path.first()) }
             dependencies.each { dim -> require(dimensions.containsKey(dim), "Unknown dimension ${dim} at ${where}") }
             used.addAll(dependencies)
-            batches << [id: stage.id ?: stage.tool, tool: stage.tool, options: options, dependencies: dependencies]
+            batches << [id: stage.id ?: stage.tool, tool: stage.tool, inputs: inputs, dependencies: dependencies]
         }
         def unused = dimensions.keySet() - used
-        require(unused.isEmpty(), "Dimensions unused by options or vary: ${unused}")
+        require(unused.isEmpty(), "Dimensions unused by inputs or vary: ${unused}")
         return batches
     }
 
@@ -110,8 +110,8 @@ class LinearExperiment {
             int position = index + 1
             def requests = parents.collectMany { parent ->
                 bindings(parent.choices, stage.dependencies, dimensions, selections).collect { choices ->
-                    def options = references(stage.options) { path -> resolve(path, dimensions, choices, position) }
-                    [key: [stage: position, choices: choices], parentKey: parent.key, options: options, choices: choices]
+                    def inputs = references(stage.inputs) { path -> resolve(path, dimensions, choices, position) }
+                    [key: [stage: position, choices: choices], parentKey: parent.key, inputs: inputs, choices: choices]
                 }
             }
             batches << [id: stage.id, tool: stage.tool, requests: requests]

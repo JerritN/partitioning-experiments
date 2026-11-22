@@ -11,6 +11,8 @@
  * `edge_metadata`: Optional edge metadata file (`[]` if omitted).
  * `opts`: Dictionary of partitioning parameters.  
  *
+ * Scalar snake_case options are forwarded as long CLI flags. Boolean true enables a switch.  
+ *
  * **Required parameters (`opts`)**  
  * `blocks`: Number of partition blocks.  
  * `epsilon`: Allowed imbalance.  
@@ -67,34 +69,14 @@ process MT_KAHYPAR {
 
     script:
 
-    assert opts.blocks != null : "Mt-KaHyPar requires blocks"
-    assert opts.epsilon != null : "Mt-KaHyPar requires epsilon"
-    assert opts.objective != null : "Mt-KaHyPar requires objective"
-    assert opts.preset_type != null : "Mt-KaHyPar requires preset_type"
-
     def command = new CommandBuilder("./${executable}")
         .add("--hypergraph", graph)
         .add("--threads", task.cpus)
-        .add("--blocks", opts.blocks)
-        .add("--epsilon", opts.epsilon)
-        .add("--objective", opts.objective)
-        .add("--preset-type", opts.preset_type)
         .add("--sp-process")
         .add("--write-partition-file")
         .add("--partition-output-folder", "partitions")
         .addIf(initial_partition as boolean, "--initial-partition", initial_partition)
         .addIf(edge_metadata as boolean, "--edge-metadata", edge_metadata)
-        .addIf(opts.seed != null, "--seed", opts.seed)
-        .addIf(opts.file_format != null, "--file-format", opts.file_format)
-        .addIf(opts.num_vcycles != null, "--num-vcycles", opts.num_vcycles)
-        .addIf(opts.edge_metadata_type != null, "--edge-metadata-type", opts.edge_metadata_type)
-        .addIf(opts.c_rating_edge_metadata != null, "--c-rating-edge-metadata", opts.c_rating_edge_metadata)
-        .addIf(opts.allow_empty_blocks == true, "--allow-empty-blocks")
-        .addIf(opts.quiet == true, "--quiet")
-        .addIf(opts.verbose == true, "--verbose")
-        .addIf(opts.enable_progress_bar == true, "--enable-progress-bar")
-        .addIf(opts.show_detailed_timings == true, "--show-detailed-timings")
-
     // Explicit boolean-valued options
     def booleanValues = [
         initial_partition_relax_on_stall: '--initial-partition-relax-on-stall',
@@ -106,6 +88,10 @@ process MT_KAHYPAR {
             command.add("${flag}=${opts[option] ? 1 : 0}")
         }
     }
+
+    def handled = booleanValues.keySet() + ['threads']
+    command.addOptions(opts.findAll { name, value -> !handled.contains(name) },
+        ['hypergraph', 'initial_partition', 'edge_metadata', 'sp_process', 'write_partition_file', 'partition_output_folder'])
 
     def script = new ScriptBuilder()
         .addLine('mkdir -p partitions')

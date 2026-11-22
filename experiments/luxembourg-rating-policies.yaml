@@ -13,15 +13,17 @@ dimensions:
 
 stages:
   - tool: metis_graph
-    options: {path: "${graph}"}
+    inputs: {path: "${graph}"}
   - tool: region_filter
-    options: {k: "${size.filter_k}"}
+    inputs:
+      options: {k: "${size.filter_k}"}
   - tool: mt_kahypar
     vary: [run]
-    options:
-      blocks: "${size.blocks}"
-      c_rating_edge_metadata: "${policy}"
-      epsilon: 0.03
-      objective: cut
-      preset_type: default
-      threads: 4
+    inputs:
+      options:
+        blocks: "${size.blocks}"
+        c_rating_edge_metadata: "${policy}"
+        epsilon: 0.03
+        objective: cut
+        preset_type: default
+        threads: 4

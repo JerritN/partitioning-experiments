@@ -13,7 +13,7 @@ The example runs one RegionFilter trial and shares its output across four rating
 
 ## Defining experiments
 
-Give the experiment a `name` and list its `stages` in execution order. Each stage has a `tool`, an optional descriptive `id`, and an optional `options` map. Stage positions identify calls, so a chain can use a tool more than once. IDs supplied explicitly must be unique.
+Give the experiment a `name` and list its `stages` in execution order. Each stage has a `tool`, an optional descriptive `id`, and an optional `inputs` map. Stage positions identify calls, so a chain can use a tool more than once. IDs supplied explicitly must be unique.
 
 Declare alternatives under `dimensions`. A list of scalar values uses each value as its own label. A map gives each choice an explicit label and value. Use a record as the value to couple different settings across tools:
 
@@ -26,7 +26,7 @@ dimensions:
   run: [1, 2, 3]
 ```
 
-Reference a dimension in a stage option with `${policy}` or a record field with `${size.filter_k}`. Put the reference in quotes when writing inline YAML maps. The reference occupies the whole value and preserves its type, including inside lists or nested maps. Supply literal options directly. For the example above, bind the filter's `k` to `${size.filter_k}` and the partitioner's `blocks` to `${size.blocks}` to keep the two settings paired.
+Reference a dimension in a stage input with `${policy}` or a record field with `${size.filter_k}`. Put the reference in quotes when writing inline YAML maps. The reference occupies the whole value and preserves its type, including inside lists or nested maps. Supply literal options directly. For the example above, bind the filter's `k` to `${size.filter_k}` and the partitioner's `blocks` to `${size.blocks}` to keep the two settings paired.
 
 A dimension expands the first time a stage references it or lists it under `vary`. Later stages inherit that choice. Independent dimensions form a cross product. For three partition runs per filter output, add `vary: [run]` to the partition stage. For three independently repeated filter outputs, move it to the filter stage. For three partition runs under *each* repeated filter, declare two repetition dimensions and introduce one at each stage. Repetitions leave tool options, including seeds, as specified.
 
@@ -42,13 +42,15 @@ This runs both policies for the small size and only `ignore` for the large size.
 
 ## Plan contract
 
-The workflow loads YAML with `ExperimentFile.read(path)`. Its `planExperiment` function checks the document fields, experiment name and required tool sequence. It calls the reusable helpers `LinearExperiment.dimensions`, `stages` and `checkSelections` for the shared dimension syntax, then calls `LinearExperiment.plan(dimensions, stages, selections)` to expand the chain. Each workflow defines its own tool options and validation rules. The planner performs no file access and accepts arbitrary chain lengths.
+The workflow loads YAML with `ExperimentFile.read(path)`. Its `planExperiment` function checks the document fields, experiment name and required tool sequence. It calls the reusable helpers `LinearExperiment.dimensions`, `stages` and `checkSelections` for the shared dimension syntax, then calls `LinearExperiment.plan(dimensions, stages, selections)` to expand the chain. Each workflow decides which named inputs each stage consumes. A stage may have several independent input maps; references resolve throughout all of them. The planner performs no file access and accepts arbitrary chain lengths.
 
-Each batch has `tool`, `id` (defaults to the tool name), and `requests`. Each request contains resolved `options`, inherited and newly bound choice labels in `choices`, an opaque `key`, and the immediate predecessor's `parentKey` (null for the first stage). Join requests to outputs by those keys. Each upstream request appears once even when several children share it. The executing workflow validates selected options and resolves input files before launching tools.
+Each batch has `tool`, `id` (defaults to the tool name), and `requests`. Each request contains resolved `inputs`, inherited and newly bound choice labels in `choices`, an opaque `key`, and the immediate predecessor's `parentKey` (null for the first stage). Join requests to outputs by those keys. Each upstream request appears once even when several children share it. The executing workflow connects named inputs and resolves graph paths before launching tools.
 
 ## RegionFilter integration
 
-This workflow expects `metis_graph`, `region_filter`, and `mt_kahypar`, in that order. The graph stage takes a `path` resolved against `--graph_dir`. See the [RegionFilter](../modules/region_filter.nf) and [Mt-KaHyPar](../modules/mt_kahypar.nf) processes for option names. RegionFilter requires exactly one of `k` and `U`. Mt-KaHyPar requires `blocks`, `epsilon`, `objective` and `preset_type`. The workflow supplies METIS format, natural-edge metadata and the default rating policy `ignore`.
+This workflow expects `metis_graph`, `region_filter`, and `mt_kahypar`, in that order. The graph stage takes `inputs.path` resolved against `--graph_dir`. See the [RegionFilter](../modules/region_filter.nf) and [Mt-KaHyPar](../modules/mt_kahypar.nf) processes for option names. RegionFilter requires exactly one of `k` and `U`. Mt-KaHyPar requires `blocks`, `epsilon`, `objective` and `preset_type`. The workflow supplies METIS format, natural-edge metadata and the default rating policy `ignore`.
+
+Both tool stages take an `inputs.options` map. Put `threads` in Mt-KaHyPar's options: the process requests that many CPUs and passes the allocated count to the executable. Ordinary scalar keys use snake_case (`num_vcycles: 2` becomes `--num-vcycles 2`). Boolean true emits a switch; false or null omits it. The modules retain their special handling for explicit boolean-valued options, RegionFilter factors and pair outputs. Tool revisions validate their own algorithm flags at execution. Input and output paths managed by a process are reserved.
 
 The workflow publishes `runs.sqlite`. Its `runs` table includes graph path, selected dimension labels, resolved tool options, tool revisions, native partition measurements and natural-edge counts. For the supplied example:
 
@@ -60,4 +62,6 @@ FROM runs
 GROUP BY experiment_name, graph_id, size_label, rating_policy;
 ```
 
-To migrate an earlier experiment, remove the outer `experiment` wrapper, move graph paths into the first stage, put constant defaults in `options`, and turn variants and repetition counts into dimensions. Replace stage-based comparisons with selections on dimension labels.
+To migrate an earlier experiment, remove the outer `experiment` wrapper, move graph paths into the first stage, put constant tool defaults in `inputs.options`, and turn variants and repetition counts into dimensions. Replace stage-based comparisons with selections on dimension labels.
+
+For files using the previous flat stage `options` map, move graph `options.path` to `inputs.path` and each tool’s `options` map to `inputs.options`.

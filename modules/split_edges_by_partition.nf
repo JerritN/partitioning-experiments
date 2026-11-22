@@ -44,8 +44,8 @@ process SPLIT_EDGES_BY_PARTITION {
             else print > "between.txt"
         }
     '''.stripIndent()
-    def command = new CommandBuilder('awk')
+    def command = new util.CommandBuilder('awk')
         .add(program, partition, edges)
 
-    return new ScriptBuilder().addCommand(command).build()
+    return new util.ScriptBuilder().addCommand(command).build()
 }

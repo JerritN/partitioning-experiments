@@ -80,31 +80,30 @@ process REGION_FILTER {
         emit: log
 
     script:
-    def command = new CommandBuilder("./${executable}")
-        .add('--graph', graph)
-        .add('--dump-fragment-graph', 'fragments.graph')
-        .add('--dump-partition', 'fragment_mapping.txt')
-        .add('--dump-regions', 'regions.txt')
-        .add('--dump-cut-edges', 'cut_edges.raw.txt')
-        .addIf(opts.dump_pairs != null, '--dump-pairs', opts.dump_pairs, 'raw_pairs/pair')
+    def command = new util.CommandBuilder("./${executable}")
+        .addFlag('--graph', graph)
+        .addFlag('--dump-fragment-graph', 'fragments.graph')
+        .addFlag('--dump-partition', 'fragment_mapping.txt')
+        .addFlag('--dump-regions', 'regions.txt')
+        .addFlag('--dump-cut-edges', 'cut_edges.raw.txt')
+        .addFlagIf(opts.dump_pairs != null, '--dump-pairs', opts.dump_pairs, 'raw_pairs/pair')
 
-    command.addOptions(opts.findAll { name, value -> !(name in ['region_factors', 'dump_pairs']) },
-        ['graph', 'dump_fragment_graph', 'dump_partition', 'dump_regions', 'dump_cut_edges'])
+    command.addOptions(opts.findAll { name, value -> !(name in ['region_factors', 'dump_pairs']) })
 
     // Accept a list or a comma-separated string.
     if (opts.region_factors != null) {
-        def factors = CollectionUtils.asList(opts.region_factors)
+        def factors = util.CollectionUtils.asList(opts.region_factors)
             .join(',')
 
-        command.add('--region-factors', factors)
+        command.addFlag('--region-factors', factors)
     }
 
-    def normalizeCuts = new CommandBuilder('awk')
+    def normalizeCuts = new util.CommandBuilder('awk')
         .add('{printf "%.0f %.0f %s %s\\n", $1 + 1, $2 + 1, $3, $4}', 'cut_edges.raw.txt')
         .addUnwrapped('>')
         .add('cut_edges.txt')
 
-    def script = new ScriptBuilder()
+    def script = new util.ScriptBuilder()
     if (opts.dump_pairs != null) {
         script.addLine('mkdir -p raw_pairs pairs')
     }

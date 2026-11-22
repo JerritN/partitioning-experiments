@@ -66,10 +66,10 @@ workflow {
     ])
 
     def filterRequests = channel.fromList(filterStage.runs).map { run ->
-        tuple(run.key.toTaskKey(), graphs[run.parentKey].file, filterOptions[run.key])
+        tuple(run.key, graphs[run.parentKey].file, filterOptions[run.key])
     }
     def partitionRunChannel = channel.fromList(partitionStage.runs)
-    def partitionRequests = partitionRunChannel.map { run -> tuple(run.key.toTaskKey(), run.parentKey.toTaskKey(), partitionOptions[run.key]) }
+    def partitionRequests = partitionRunChannel.map { run -> tuple(run.key, run.parentKey, partitionOptions[run.key]) }
     def metadata = partitionRunChannel.map { run ->
         def filter = filterRunByKey[run.parentKey]
         def filterOpts = filterOptions[filter.key]
@@ -84,7 +84,7 @@ workflow {
         ]
         if (filterOpts.k != null) fields.region_filter_k = filterOpts.k
         if (filterOpts.U != null) fields.region_filter_u = filterOpts.U
-        tuple(run.key.toTaskKey(), fields)
+        tuple(run.key, fields)
     }
     BENCHMARK_PARTITIONS(filterRequests, partitionRequests, metadata,
         BUILD_PARTITIONING_TOOLS.out.region_filter, BUILD_PARTITIONING_TOOLS.out.mt_kahypar)

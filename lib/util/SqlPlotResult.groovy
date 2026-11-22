@@ -1,3 +1,5 @@
+package util
+
 class SqlPlotResult {
     /** Add named fields to a single sqlplot-tools RESULT record. */
     static String withFields(String record, Map fields) {

@@ -53,7 +53,8 @@ class ExperimentPlanner {
         def runs = upstreamRuns.collectMany { parent ->
             expandChoices(parent.choices, usedDimensions).collect { choices ->
                 def inputs = resolveInputs(stage.inputTemplate, choices, position)
-                new PlannedRun(new RunKey(position, choices), parent.key, inputs, choices)
+                def key = [stage: position, choices: new LinkedHashMap(choices)]
+                new PlannedRun(key, parent.key, inputs, choices)
             }
         }
         return new PlannedStage(stage.id ?: stage.tool, stage.tool, runs)

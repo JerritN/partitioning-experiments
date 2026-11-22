@@ -69,14 +69,14 @@ process MT_KAHYPAR {
 
     script:
 
-    def command = new CommandBuilder("./${executable}")
-        .add("--hypergraph", graph)
-        .add("--threads", task.cpus)
-        .add("--sp-process")
-        .add("--write-partition-file")
-        .add("--partition-output-folder", "partitions")
-        .addIf(initial_partition as boolean, "--initial-partition", initial_partition)
-        .addIf(edge_metadata as boolean, "--edge-metadata", edge_metadata)
+    def command = new util.CommandBuilder("./${executable}")
+        .addFlag("--hypergraph", graph)
+        .addFlag("--threads", task.cpus)
+        .addFlag("--sp-process")
+        .addFlag("--write-partition-file")
+        .addFlag("--partition-output-folder", "partitions")
+        .addFlagIf(initial_partition as boolean, "--initial-partition", initial_partition)
+        .addFlagIf(edge_metadata as boolean, "--edge-metadata", edge_metadata)
     // Explicit boolean-valued options
     def booleanValues = [
         initial_partition_relax_on_stall: '--initial-partition-relax-on-stall',
@@ -90,10 +90,9 @@ process MT_KAHYPAR {
     }
 
     def handled = booleanValues.keySet() + ['threads']
-    command.addOptions(opts.findAll { name, value -> !handled.contains(name) },
-        ['hypergraph', 'initial_partition', 'edge_metadata', 'sp_process', 'write_partition_file', 'partition_output_folder'])
+    command.addOptions(opts.findAll { name, value -> !handled.contains(name) })
 
-    def script = new ScriptBuilder()
+    def script = new util.ScriptBuilder()
         .addLine('mkdir -p partitions')
         .addCommand(command, 'mt_kahypar.log', true)
         

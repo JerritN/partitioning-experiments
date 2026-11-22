@@ -31,7 +31,7 @@ workflow BENCHMARK_PARTITIONS {
 
     // Several partitions share the edges produced by one graph/filter repetition.
     def naturalEdges = PARTITION_WITH_REGION_FILTER.out.natural_edges
-    def totals = naturalEdges.map { filterKey, edges -> tuple(filterKey, FileUtils.countRows(edges)) }
+    def totals = naturalEdges.map { filterKey, edges -> tuple(filterKey, util.FileUtils.countRows(edges)) }
     def edgeInputs = PARTITION_WITH_REGION_FILTER.out.partitions
         .join(partitions.map { key, filterKey, _opts -> tuple(key, filterKey) },
               failOnDuplicate: true, failOnMismatch: true)
@@ -44,7 +44,7 @@ workflow BENCHMARK_PARTITIONS {
         .combine(totals, by: 0)
         .map { _filterKey, key, total -> tuple(key, total) }
     def counts = SPLIT_EDGES_BY_PARTITION.out.between
-        .map { key, edges -> tuple(key, FileUtils.countRows(edges)) }
+        .map { key, edges -> tuple(key, util.FileUtils.countRows(edges)) }
         .join(partitionTotals, failOnDuplicate: true, failOnMismatch: true)
 
     def records = PARTITION_WITH_REGION_FILTER.out.results
@@ -53,7 +53,7 @@ workflow BENCHMARK_PARTITIONS {
         .combine(filterTools.map { commit, _executable -> commit })
         .combine(partitionTools.map { commit, _executable -> commit })
         .map { _key, result, fields, cut, total, filterCommit, partitionCommit ->
-            SqlPlotResult.withFields(result.text, [
+            util.SqlPlotResult.withFields(result.text, [
                 natural_edges_cut: cut,
                 total_natural_edges: total
             ] + fields + [

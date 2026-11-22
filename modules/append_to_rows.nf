@@ -19,13 +19,13 @@ process APPEND_TO_ROWS {
         emit: output
     
     script:
-    def command = new CommandBuilder('awk')
+    def command = new util.CommandBuilder('awk')
         .add("{print \$0, ${value}}")
         .add(input_file)
         .addUnwrapped('>')
         .add('output.txt')
 
-    return new ScriptBuilder()
+    return new util.ScriptBuilder()
         .addCommand(command)
         .build()
 }

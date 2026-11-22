@@ -22,11 +22,11 @@ process FILTER_ROWS_BY_BIT {
     assert column instanceof Integer && column > 0 : "Expected a positive mask column"
     assert bit instanceof Integer && bit in 0..31 : "Expected bit index 0 through 31"
 
-    def filter = new CommandBuilder('awk')
+    def filter = new util.CommandBuilder('awk')
         .add('-v', "col=${column}", '-v', "bit=${1L << bit}")
         .add('$col !~ /^[0-9]+$/ || $col + 0 > 4294967295 { exit 1 } int($col / bit) % 2', input_file)
         .addUnwrapped('>')
         .add('output.txt')
 
-    return new ScriptBuilder().addCommand(filter).build()
+    return new util.ScriptBuilder().addCommand(filter).build()
 }

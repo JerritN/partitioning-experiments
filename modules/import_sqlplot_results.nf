@@ -20,10 +20,10 @@ process IMPORT_SQLPLOT_RESULTS {
     script:
     assert table ==~ /[A-Za-z_][A-Za-z0-9_]*/ : 'Expected a SQL identifier for table'
     def database = "${table}.sqlite"
-    def command = new CommandBuilder('sqlplot-tools')
+    def command = new util.CommandBuilder('sqlplot-tools')
         .add('import-data', '-D', "sqlite:${database}", table, records)
 
-    return new ScriptBuilder()
+    return new util.ScriptBuilder()
         .addLine("touch ${database}")
         .addCommand(command)
         .build()

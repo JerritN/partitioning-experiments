@@ -42,7 +42,7 @@ This runs both policies for the small size and only `ignore` for the large size.
 
 ## Plan contract
 
-`ExperimentFile.read(path)` loads the YAML as a map. `LinearExperiment.plan(map)` validates the structure and returns one batch per stage, in order. A workflow can pass an expected list of tool names as a second argument to validate its chain before expansion. The planner performs no file access and accepts arbitrary chain lengths.
+The workflow loads YAML with `ExperimentFile.read(path)`. Its `planExperiment` function checks the document fields, experiment name and required tool sequence. It calls the reusable helpers `LinearExperiment.dimensions`, `stages` and `checkSelections` for the shared dimension syntax, then calls `LinearExperiment.plan(dimensions, stages, selections)` to expand the chain. Each workflow defines its own tool options and validation rules. The planner performs no file access and accepts arbitrary chain lengths.
 
 Each batch has `tool`, `id` (defaults to the tool name), and `requests`. Each request contains resolved `options`, inherited and newly bound choice labels in `choices`, an opaque `key`, and the immediate predecessor's `parentKey` (null for the first stage). Join requests to outputs by those keys. Each upstream request appears once even when several children share it. The executing workflow validates selected options and resolves input files before launching tools.
 

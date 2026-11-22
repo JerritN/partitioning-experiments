@@ -56,23 +56,3 @@ plan.verifyStageSequence(['metis_graph', 'region_filter', 'mt_kahypar'])
 `ExperimentPlanner` expands that definition into an `Experiment` with a name and ordered `stages`. Each `PlannedStage` contains `PlannedRun` objects. Planning works entirely in memory. The workflow validates the supported stage sequence and adapts each run’s inputs to process requests.
 
 Each planned stage has `tool`, `id` (defaults to the tool name), and `runs`. Each run contains resolved `inputs`, inherited and newly bound choice labels in `choices`, an opaque `key`, and the immediate predecessor's `parentKey` (null for the first stage). Compare opaque `RunKey` values when linking runs in memory. Use `key.toTaskKey()` when constructing Nextflow tuples so cached tasks can restore their keys on resume. Each upstream run appears once even when several children share it. The executing workflow connects named inputs and resolves graph paths before launching tools.
-
-## RegionFilter integration
-
-This workflow expects `metis_graph`, `region_filter`, and `mt_kahypar`, in that order. The graph stage takes `inputs.path` resolved against `--graph_dir`. See the [RegionFilter](../modules/region_filter.nf) and [Mt-KaHyPar](../modules/mt_kahypar.nf) processes for option names. RegionFilter requires exactly one of `k` and `U`. Mt-KaHyPar requires `blocks`, `epsilon`, `objective` and `preset_type`. The workflow supplies METIS format, natural-edge metadata and the default rating policy `ignore`.
-
-Both tool stages take an `inputs.options` map. Put `threads` in Mt-KaHyPar's options: the process requests that many CPUs and passes the allocated count to the executable. Ordinary scalar keys use snake_case (`num_vcycles: 2` becomes `--num-vcycles 2`). Boolean true emits a switch; false or null omits it. The modules retain their special handling for explicit boolean-valued options, RegionFilter factors and pair outputs. Tool revisions validate their own algorithm flags at execution. Input and output paths managed by a process are reserved.
-
-The workflow publishes `runs.sqlite`. Its `runs` table includes graph path, selected dimension labels, resolved tool options, tool revisions, native partition measurements and natural-edge counts. For the supplied example:
-
-```sql
-SELECT graph_id, json_extract(dimension_choices, '$.size') AS size_label,
-       rating_policy, COUNT(*) AS runs, AVG(cut) AS mean_cut,
-       AVG(natural_edges_cut) AS mean_natural_edges_cut
-FROM runs
-GROUP BY experiment_name, graph_id, size_label, rating_policy;
-```
-
-To migrate an earlier experiment, remove the outer `experiment` wrapper, move graph paths into the first stage, put constant tool defaults in `inputs.options`, and turn variants and repetition counts into dimensions. Replace stage-based comparisons with selections on dimension labels.
-
-For files using the previous flat stage `options` map, move graph `options.path` to `inputs.path` and each tool’s `options` map to `inputs.options`.

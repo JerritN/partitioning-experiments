@@ -1,9 +1,11 @@
+package experiment
+
 import groovy.transform.Canonical
 
 @Canonical
 class PlannedRun {
-    final Map key
-    final Map parentKey
+    final RunKey key
+    final RunKey parentKey
     final Map inputs
     final Map choices
 }

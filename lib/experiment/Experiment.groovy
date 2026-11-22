@@ -1,4 +1,7 @@
+package experiment
+
 import groovy.transform.Canonical
+import util.Assertions
 
 @Canonical
 class Experiment {
@@ -7,7 +10,6 @@ class Experiment {
 
     void verifyStageSequence(List expectedTools) {
         def actualTools = stages*.tool
-        if (actualTools != expectedTools)
-            throw new IllegalArgumentException("Expected stages ${expectedTools}; received ${actualTools}")
+        Assertions.assertThat(actualTools == expectedTools, "Expected stages ${expectedTools}; received ${actualTools}")
     }
 }

@@ -51,7 +51,7 @@ def plan = experiment.ExperimentPlanner.plan(definition)
 plan.verifyStageSequence(['metis_graph', 'region_filter', 'mt_kahypar'])
 ```
 
-`ExperimentFile` decodes YAML. `ExperimentParser` translates shorthand choices and reference strings into an `ExperimentDefinition` containing ordered `StageDefinition` objects. References in their input templates are `DimensionReference` values. Code can also construct these definitions directly using normalized choice maps. Definitions hold data, including each stage’s explicit `vary` list. Before expansion, the planner derives each stage’s used dimensions and checks stage IDs, references and selection labels.
+`ExperimentFile` decodes YAML. `ExperimentParser` translates shorthand choices and reference strings into an `ExperimentDefinition` containing ordered `StageDefinition` objects. References in their input templates are `DimensionReference` values. Code can also construct these definitions directly using normalized choice maps. Definitions hold data, including each stage’s explicit `vary` list. The parser checks document shape, identifier syntax and choice label types. The planner checks selection labels before expansion, verifies explicit IDs and dimension use as it visits each stage, and reports unused dimensions after the last stage. Record fields are resolved only for selected choices.
 
 `ExperimentPlanner` expands that definition into an `Experiment` with a name and ordered `stages`. Each `PlannedStage` contains `PlannedRun` objects. Planning works entirely in memory. The workflow validates the supported stage sequence and adapts each run’s inputs to process requests.
 

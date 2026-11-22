@@ -54,16 +54,39 @@ workflow {
                 objective: 'cut', preset_type: 'default', threads: 4]], ['run'])
         ])
     assert experiment.ExperimentPlanner.plan(direct) == planDocument.call(example)
-    def bad = [documentSpec + [selections: [[graph:'missing']]],
-        documentSpec + [stages: [[tool:'input', inputs:[x:'${missing}']]]],
-        [name:'bad', stages:[[tool:'input', inputs:[x:'${size.other}']]],
-            dimensions:[size:[s:[k:2]]]]]
-    bad.each { spec ->
+    def fixed = [name: 'fixed', stages: [[tool: 'input']]]
+    def malformed = [
+        [fixed + [dimensions: ['bad-name': [1]]], 'Invalid dimension name'],
+        [fixed + [dimensions: [size: [[k: 2]]]], 'nonempty list of labels'],
+        [fixed + [stages: [[tool: 'input', vary: [2]]]], 'dimension names in vary'],
+        [fixed + [selections: [false]], 'selection map']
+    ]
+    malformed.each { spec, message ->
         try {
-            planDocument.call(spec)
-            assert false : 'Invalid documentSpec was accepted'
+            experiment.ExperimentParser.parse(spec)
+            assert false : 'Parser accepted malformed input'
         } catch (IllegalArgumentException expected) {
-            assert expected.message
+            assert expected.message.contains(message)
+        }
+    }
+
+    def records = [name: 'records', dimensions: [size: [small: [k: 2], large: [:]]],
+        stages: [[tool: 'input', inputs: [k: '${size.k}']]]]
+    assert planDocument.call(records + [selections: [[size: 'small']]]).stages[0].runs*.inputs == [[k: 2]]
+    def incoherent = [
+        [documentSpec + [selections: [[graph: 'missing']]], 'Unknown selection'],
+        [fixed + [stages: [[tool: 'input', inputs: [x: '${missing}']]]], 'Unknown dimensions'],
+        [fixed + [stages: [[tool: 'a', id: 'same'], [tool: 'b', id: 'same']]], 'Duplicate stage id'],
+        [fixed + [dimensions: [unused: [1]]], 'Unused dimensions'],
+        [records, 'Missing k for size=large']
+    ]
+    incoherent.each { spec, message ->
+        def definition = experiment.ExperimentParser.parse(spec)
+        try {
+            experiment.ExperimentPlanner.plan(definition)
+            assert false : 'Planner accepted an incoherent experiment'
+        } catch (IllegalArgumentException expected) {
+            assert expected.message.contains(message)
         }
     }
 }

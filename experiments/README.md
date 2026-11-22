@@ -9,7 +9,7 @@ nextflow run workflows/experiment_region_filter_integration.nf \
   -output-dir results/luxembourg-rating-policies
 ```
 
-The example runs one RegionFilter trial and shares its output across four rating policies with five Mt-KaHyPar runs each.
+The example runs one RegionFilter run and shares its output across four rating policies with five Mt-KaHyPar runs each.
 
 ## Defining experiments
 
@@ -42,9 +42,9 @@ This runs both policies for the small size and only `ignore` for the large size.
 
 ## Plan contract
 
-Load the YAML with `ExperimentFile.read(path)` and pass the returned map to `LinearExperiment.plan(experiment)`. The planner validates the shared document syntax and returns ordered batches of resolved runs. Call `LinearExperiment.verifyStageSequence(batches, expectedTools)` to check the tool names in order, including repeated tools. Each workflow checks the resolved named inputs while adapting them to its processes. The planner performs no file access and accepts arbitrary chain lengths.
+Load the YAML with `ExperimentFile.read(path)` and pass the returned map to `LinearExperiment.plan(experiment)`. The planner validates the shared document syntax and returns planned stages in declaration order. Call `LinearExperiment.verifyStageSequence(plannedStages, expectedTools)` to check the tool names in order, including repeated tools. Each workflow checks the resolved named inputs while adapting them to its processes. The planner performs no file access and accepts arbitrary chain lengths.
 
-Each batch has `tool`, `id` (defaults to the tool name), and `requests`. Each request contains resolved `inputs`, inherited and newly bound choice labels in `choices`, an opaque `key`, and the immediate predecessor's `parentKey` (null for the first stage). Join requests to outputs by those keys. Each upstream request appears once even when several children share it. The executing workflow connects named inputs and resolves graph paths before launching tools.
+Each planned stage has `tool`, `id` (defaults to the tool name), and `runs`. Each run contains resolved `inputs`, inherited and newly bound choice labels in `choices`, an opaque `key`, and the immediate predecessor's `parentKey` (null for the first stage). Join runs to outputs by those keys. Each upstream run appears once even when several children share it. The executing workflow connects named inputs and resolves graph paths before launching tools.
 
 ## RegionFilter integration
 

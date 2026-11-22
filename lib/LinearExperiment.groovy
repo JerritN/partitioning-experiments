@@ -20,19 +20,32 @@ class LinearExperiment {
         raw.collectEntries { value -> [(value): value] }
     }
 
-    // Apply the same reference syntax when discovering dependencies and resolving inputs.
-    private static Object references(value, Closure resolve) {
-        if (value instanceof Map) return value.collectEntries { k, v -> [(k): references(v, resolve)] }
-        if (value instanceof List) return value.collect { references(it, resolve) }
-        if (!(value instanceof String) || !value.contains('${')) return value
+    private static List parseReference(value) {
+        if (!(value instanceof String) || !value.contains('${')) return []
         def match = value =~ /^\$\{([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\}$/
         require(match.matches(), "Expected a whole-value dimension reference: ${value}")
-        resolve(match.group(1).tokenize('.'))
+        return match.group(1).tokenize('.')
     }
 
-    private static Map readDimensions(rawDimensions) {
-        require(rawDimensions instanceof Map, 'dimensions must be a map')
-        return rawDimensions.collectEntries { dim, raw ->
+    private static Set referencedDimensions(value) {
+        if (value instanceof Map) return referencedDimensions(value.values().toList())
+        if (value instanceof List) return value.collectMany { referencedDimensions(it) } as Set
+        return parseReference(value).take(1) as Set
+    }
+
+    private static Object resolveInputs(value, Map dimensions, Map choices, int position) {
+        if (value instanceof Map) {
+            return value.collectEntries { name, input -> [(name): resolveInputs(input, dimensions, choices, position)] }
+        }
+        if (value instanceof List) return value.collect { resolveInputs(it, dimensions, choices, position) }
+        def path = parseReference(value)
+        if (!path) return value
+        return resolveReference(path, dimensions, choices, position)
+    }
+
+    private static Map normalizeDimensions(dimensionDefinitions) {
+        require(dimensionDefinitions instanceof Map, 'dimensions must be a map')
+        return dimensionDefinitions.collectEntries { dim, raw ->
             require(dim instanceof String && dim ==~ /[A-Za-z_][A-Za-z0-9_]*/, "Invalid dimension name: ${dim}")
             [(dim): dimensionChoices(raw, dim)]
         }
@@ -48,51 +61,41 @@ class LinearExperiment {
         }
     }
 
-    private static List readStages(rawStages, Map dimensions) {
-        require(rawStages instanceof List && !rawStages.empty, 'Expected an ordered list of stages')
-        def batches = []
-        def used = [] as Set
-        def ids = [] as Set
-        rawStages.eachWithIndex { stage, index ->
-            def where = "stage ${index + 1}"
-            OptionChecks.checkMap(stage, ['id','tool','inputs','vary'], where)
-            require(named(stage.tool), "${where} requires a tool")
-            if (stage.containsKey('id')) {
-                require(named(stage.id) && ids.add(stage.id), "Invalid or duplicate stage id at ${where}: ${stage.id}")
-            }
-            def inputs = stage.getOrDefault('inputs', [:])
-            def vary = stage.getOrDefault('vary', [])
-            require(inputs instanceof Map && vary instanceof List, "${where} requires an inputs map and a vary list")
-            def dependencies = new LinkedHashSet(vary)
-            references(inputs) { path -> dependencies.add(path.first()) }
-            dependencies.each { dim -> require(dimensions.containsKey(dim), "Unknown dimension ${dim} at ${where}") }
-            used.addAll(dependencies)
-            batches << [id: stage.id ?: stage.tool, tool: stage.tool, inputs: inputs, dependencies: dependencies]
-        }
-        def unused = dimensions.keySet() - used
-        require(unused.isEmpty(), "Dimensions unused by inputs or vary: ${unused}")
-        return batches
+    private static Map prepareStage(definition, int position, Map dimensions) {
+        def location = "stage ${position}"
+        MapChecks.requireOnlyKeys(definition, ['id', 'tool', 'inputs', 'vary'], location)
+        require(named(definition.tool), "${location} requires a tool")
+        require(!definition.containsKey('id') || named(definition.id), "Invalid id at ${location}")
+        def inputTemplate = definition.getOrDefault('inputs', [:])
+        def vary = definition.getOrDefault('vary', [])
+        require(inputTemplate instanceof Map && vary instanceof List, "${location} requires an inputs map and a vary list")
+        def usedDimensions = new LinkedHashSet(vary)
+        usedDimensions.addAll(referencedDimensions(inputTemplate))
+        def unknown = usedDimensions - dimensions.keySet()
+        require(unknown.isEmpty(), "Unknown dimensions at ${location}: ${unknown}")
+        return [id: definition.id ?: definition.tool, tool: definition.tool,
+                inputTemplate: inputTemplate, usedDimensions: usedDimensions]
     }
 
-    private static boolean canMatch(Map choices, List selections) {
+    private static boolean isCompatibleWithAnySelection(Map choices, List selections) {
         selections.any { selection ->
             selection.every { dim, label -> !choices.containsKey(dim) || choices[dim] == label }
         }
     }
 
     // Expand only dimensions first introduced here. Later stages inherit these choices.
-    private static List bindings(Map inherited, Set dependencies, Map dimensions, List selections) {
-        def rows = [inherited]
-        for (dim in dependencies - inherited.keySet()) {
-            rows = rows.collectMany { row ->
-                dimensions[dim].keySet().collect { label -> row + [(dim): label] }
-                    .findAll { choices -> canMatch(choices, selections) }
+    private static List expandChoices(Map inheritedChoices, Set usedDimensions, Map dimensions, List selections) {
+        def combinations = [inheritedChoices]
+        for (dim in usedDimensions - inheritedChoices.keySet()) {
+            combinations = combinations.collectMany { choices ->
+                dimensions[dim].keySet().collect { label -> choices + [(dim): label] }
+                    .findAll { candidate -> isCompatibleWithAnySelection(candidate, selections) }
             }
         }
-        return rows
+        return combinations
     }
 
-    private static Object resolve(List path, Map dimensions, Map choices, int position) {
+    private static Object resolveReference(List path, Map dimensions, Map choices, int position) {
         def dim = path.first()
         def value = dimensions[dim][choices[dim]]
         path.tail().each { field ->
@@ -103,36 +106,46 @@ class LinearExperiment {
         value
     }
 
-    /** Expand a complete experiment document without resolving files or launching processes. */
+    private static Map planStage(stage, int position, List upstreamRuns, Map dimensions, List selections) {
+        def runs = upstreamRuns.collectMany { upstreamRun ->
+            def combinations = expandChoices(upstreamRun.choices, stage.usedDimensions, dimensions, selections)
+            combinations.collect { choices ->
+                def inputs = resolveInputs(stage.inputTemplate, dimensions, choices, position)
+                [key: [stage: position, choices: choices], parentKey: upstreamRun.key, inputs: inputs, choices: choices]
+            }
+        }
+        return [id: stage.id, tool: stage.tool, runs: runs]
+    }
+
     static List plan(Map experiment) {
-        OptionChecks.checkMap(experiment, ['name', 'dimensions', 'stages', 'selections'], 'experiment')
+        MapChecks.requireOnlyKeys(experiment, ['name', 'dimensions', 'stages', 'selections'], 'experiment')
         require(named(experiment.name), 'Expected an experiment name')
-        def dimensions = readDimensions(experiment.getOrDefault('dimensions', [:]))
-        def stages = readStages(experiment.stages, dimensions)
+        def dimensions = normalizeDimensions(experiment.getOrDefault('dimensions', [:]))
         def selections = experiment.getOrDefault('selections', [[:]])
         checkSelections(selections, dimensions)
-        return expand(dimensions, stages, selections)
-    }
 
-    static void verifyStageSequence(List batches, List expectedTools) {
-        def actualTools = batches*.tool
-        require(actualTools == expectedTools, "Expected stages ${expectedTools}; received ${actualTools}")
-    }
-
-    private static List expand(Map dimensions, List stages, List selections) {
-        def parents = [[key: null, choices: [:]]]
-        def batches = []
-        stages.eachWithIndex { stage, index ->
-            int position = index + 1
-            def requests = parents.collectMany { parent ->
-                bindings(parent.choices, stage.dependencies, dimensions, selections).collect { choices ->
-                    def inputs = references(stage.inputs) { path -> resolve(path, dimensions, choices, position) }
-                    [key: [stage: position, choices: choices], parentKey: parent.key, inputs: inputs, choices: choices]
-                }
-            }
-            batches << [id: stage.id, tool: stage.tool, requests: requests]
-            parents = requests
+        require(experiment.stages instanceof List && !experiment.stages.empty, 'Expected an ordered list of stages')
+        def stageDefinitions = []
+        experiment.stages.eachWithIndex { definition, index ->
+            stageDefinitions << prepareStage(definition, index + 1, dimensions)
         }
-        return batches
+        def explicitIds = experiment.stages*.id.findAll { it != null }
+        require(explicitIds.size() == explicitIds.toSet().size(), "Duplicate explicit stage ids: ${explicitIds}")
+        def unused = dimensions.keySet() - stageDefinitions.collectMany { it.usedDimensions }
+        require(unused.isEmpty(), "Dimensions unused by inputs or vary: ${unused}")
+
+        def plannedStages = []
+        def upstreamRuns = [[key: null, choices: [:]]]
+        stageDefinitions.eachWithIndex { definition, index ->
+            def stage = planStage(definition, index + 1, upstreamRuns, dimensions, selections)
+            plannedStages << stage
+            upstreamRuns = stage.runs
+        }
+        return plannedStages
+    }
+
+    static void verifyStageSequence(List plannedStages, List expectedTools) {
+        def actualTools = plannedStages*.tool
+        require(actualTools == expectedTools, "Expected stages ${expectedTools}; received ${actualTools}")
     }
 }

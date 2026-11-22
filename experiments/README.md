@@ -42,7 +42,7 @@ This runs both policies for the small size and only `ignore` for the large size.
 
 ## Plan contract
 
-The workflow loads YAML with `ExperimentFile.read(path)`. Its `planExperiment` function checks the document fields, experiment name and required tool sequence. It calls the reusable helpers `LinearExperiment.dimensions`, `stages` and `checkSelections` for the shared dimension syntax, then calls `LinearExperiment.plan(dimensions, stages, selections)` to expand the chain. Each workflow decides which named inputs each stage consumes. A stage may have several independent input maps; references resolve throughout all of them. The planner performs no file access and accepts arbitrary chain lengths.
+Load the YAML with `ExperimentFile.read(path)` and pass the returned map to `LinearExperiment.plan(experiment)`. The planner validates the shared document syntax and returns ordered batches of resolved runs. Call `LinearExperiment.verifyStageSequence(batches, expectedTools)` to check the tool names in order, including repeated tools. Each workflow checks the resolved named inputs while adapting them to its processes. The planner performs no file access and accepts arbitrary chain lengths.
 
 Each batch has `tool`, `id` (defaults to the tool name), and `requests`. Each request contains resolved `inputs`, inherited and newly bound choice labels in `choices`, an opaque `key`, and the immediate predecessor's `parentKey` (null for the first stage). Join requests to outputs by those keys. Each upstream request appears once even when several children share it. The executing workflow connects named inputs and resolves graph paths before launching tools.
 

@@ -30,7 +30,7 @@ class LinearExperiment {
         resolve(match.group(1).tokenize('.'))
     }
 
-    static Map dimensions(rawDimensions) {
+    private static Map readDimensions(rawDimensions) {
         require(rawDimensions instanceof Map, 'dimensions must be a map')
         return rawDimensions.collectEntries { dim, raw ->
             require(dim instanceof String && dim ==~ /[A-Za-z_][A-Za-z0-9_]*/, "Invalid dimension name: ${dim}")
@@ -38,7 +38,7 @@ class LinearExperiment {
         }
     }
 
-    static void checkSelections(selectors, Map dimensions) {
+    private static void checkSelections(selectors, Map dimensions) {
         require(selectors instanceof List && !selectors.empty, 'selections must be a nonempty list')
         selectors.each { selector ->
             require(selector instanceof Map, 'Each selection must be a map of dimension labels')
@@ -48,7 +48,7 @@ class LinearExperiment {
         }
     }
 
-    static List stages(rawStages, Map dimensions) {
+    private static List readStages(rawStages, Map dimensions) {
         require(rawStages instanceof List && !rawStages.empty, 'Expected an ordered list of stages')
         def batches = []
         def used = [] as Set
@@ -103,7 +103,23 @@ class LinearExperiment {
         value
     }
 
-    static List plan(Map dimensions, List stages, List selections) {
+    /** Expand a complete experiment document without resolving files or launching processes. */
+    static List plan(Map experiment) {
+        OptionChecks.checkMap(experiment, ['name', 'dimensions', 'stages', 'selections'], 'experiment')
+        require(named(experiment.name), 'Expected an experiment name')
+        def dimensions = readDimensions(experiment.getOrDefault('dimensions', [:]))
+        def stages = readStages(experiment.stages, dimensions)
+        def selections = experiment.getOrDefault('selections', [[:]])
+        checkSelections(selections, dimensions)
+        return expand(dimensions, stages, selections)
+    }
+
+    static void verifyStageSequence(List batches, List expectedTools) {
+        def actualTools = batches*.tool
+        require(actualTools == expectedTools, "Expected stages ${expectedTools}; received ${actualTools}")
+    }
+
+    private static List expand(Map dimensions, List stages, List selections) {
         def parents = [[key: null, choices: [:]]]
         def batches = []
         stages.eachWithIndex { stage, index ->

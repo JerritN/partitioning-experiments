@@ -1,3 +1,4 @@
+package util
 
 class GitUtils {
 

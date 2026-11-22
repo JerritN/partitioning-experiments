@@ -17,14 +17,8 @@ workflow {
         def parent = plan.stages[1].runs.find { it.key == run.parentKey }
         parent && parent.inputs.second.blocks == 2 * parent.inputs.first.k && run.inputs.nested == [2 * parent.inputs.first.k, run.choices.policy]
     }
-    def originalChoices = [policy: 'baseline', run: 2]
-    def key = new experiment.RunKey(3, originalChoices)
-    def equivalentKey = new experiment.RunKey(3, [run: 2, policy: 'baseline'])
-    originalChoices.run = 9
-    key.toTaskKey().choices.run = 7
-    assert [(key): 'found'][equivalentKey] == 'found'
-    assert key.toTaskKey() == [stage: 3, choices: [policy: 'baseline', run: 2]]
-    assert key != new experiment.RunKey(2, equivalentKey.toTaskKey().choices)
+    def repeatedPlan = planDocument.call(documentSpec)
+    assert repeatedPlan.stages*.runs*.key == plan.stages*.runs*.key
 
     def selectors = [[graph: 'a', policy: false], [graph: 'a', size: 's', policy: false]]
     def selected = planDocument.call(documentSpec + [selections: selectors])

@@ -49,7 +49,7 @@ process STREETVIZ {
     script:
     assert opts.coord_format != null : "Streetviz requires coord_format"
 
-    def command = new CommandBuilder('streetviz')
+    def command = new util.CommandBuilder('streetviz')
         .add('--graph', graph)
         .add('--coords', coords)
         .add('--coord-format', opts.coord_format)
@@ -62,7 +62,7 @@ process STREETVIZ {
         .addIf(opts.tile_url != null, '--tile-url', opts.tile_url)
         .addIf(opts.attribution != null, '--attribution', opts.attribution)
 
-    return new ScriptBuilder()
+    return new util.ScriptBuilder()
         .addCommand(command, 'streetviz.log', true)
         .build()
 }

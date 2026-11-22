@@ -1,3 +1,4 @@
+package util
 
 class ScriptBuilder {
     private List<String> commands = []

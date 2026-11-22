@@ -32,13 +32,13 @@ process GIT_CHECKOUT {
     assert commit?.toString() ==~ /(?i)[0-9a-f]{40,64}/ :
         "Expected a full Git commit hash"
 
-    def clone = new CommandBuilder('git').add('clone', '--no-checkout', repository, 'source')
+    def clone = new util.CommandBuilder('git').add('clone', '--no-checkout', repository, 'source')
 
-    def checkout = new CommandBuilder('git').add('-C', 'source', 'checkout', '--detach', commit)
+    def checkout = new util.CommandBuilder('git').add('-C', 'source', 'checkout', '--detach', commit)
 
-    def submodules = new CommandBuilder('git').add('-C', 'source', 'submodule','update', '--init', '--recursive')
+    def submodules = new util.CommandBuilder('git').add('-C', 'source', 'submodule','update', '--init', '--recursive')
 
-    def script = new ScriptBuilder()
+    def script = new util.ScriptBuilder()
         .addCommand(clone)
         .addCommand(checkout)
         .addCommand(submodules)

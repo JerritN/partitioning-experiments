@@ -62,7 +62,7 @@ process PUNCH_FILTER {
     assert opts.U != null 
         : "PUNCH requires parameter U"
 
-    def command = new CommandBuilder("./${executable}")
+    def command = new util.CommandBuilder("./${executable}")
         .add('--graph', graph)
         .add('--U', opts.U)
         .add('--dump-fragment-graph', 'fragments.graph')
@@ -76,7 +76,7 @@ process PUNCH_FILTER {
         .addIf(opts.arc_weights == true, '--arc-weights')
         .addIf(opts.verbose == true, '--verbose')
 
-    def script = new ScriptBuilder()
+    def script = new util.ScriptBuilder()
         .addCommand(command, 'punch.log', true)
 
     return script.build()

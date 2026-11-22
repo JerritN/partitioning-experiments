@@ -22,11 +22,11 @@ process INDEX_ROWS {
     assert start_index instanceof Integer : "start_index must be an integer"
 
     def indexing = "NR + ${start_index} - 1"
-    def command = new CommandBuilder('awk')
+    def command = new util.CommandBuilder('awk')
         .add("{print ${indexing}, \$0}", input_file)
         .addUnwrapped('>')
         .add('output.txt')
-    return new ScriptBuilder()
+    return new util.ScriptBuilder()
         .addCommand(command)
         .build()
 }

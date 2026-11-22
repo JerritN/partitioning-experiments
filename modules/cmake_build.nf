@@ -50,7 +50,7 @@ process CMAKE_BUILD {
         emit: build_log
 
     script:
-    def configure = new CommandBuilder('cmake')
+    def configure = new util.CommandBuilder('cmake')
         .add('-S', source)
         .add('-B', 'build')
         .addIf(opts.preset != null, '--preset', opts.preset)
@@ -66,22 +66,22 @@ process CMAKE_BUILD {
         configure.add("-D${name}=${cmakeValue}")
     }
 
-    def build = new CommandBuilder('cmake')
+    def build = new util.CommandBuilder('cmake')
         .add('--build', 'build')
         .add('--parallel', "${task.cpus}")
 
-    def targets = CollectionUtils.asList(opts.target)
+    def targets = util.CollectionUtils.asList(opts.target)
     if (targets) {
         build.add('--target').addAll(targets)
     }
 
-    def script = new ScriptBuilder()
+    def script = new util.ScriptBuilder()
         .addCommand(configure, "configure.log", true)
         .addCommand(build, "build.log", true)
 
-    def binaries = CollectionUtils.asList(opts.binary)
+    def binaries = util.CollectionUtils.asList(opts.binary)
     if (binaries) {
-        script.addCommand(new CommandBuilder('mkdir').add('-p', 'bin'))
+        script.addCommand(new util.CommandBuilder('mkdir').add('-p', 'bin'))
 
         binaries.each { value  ->
             def binary = value.toString()
@@ -91,7 +91,7 @@ process CMAKE_BUILD {
                 !binary.tokenize('/').contains('..') :
                 "Invalid binary path: ${binary}"
 
-            script.addCommand(new CommandBuilder('cp').add("build/${binary}", 'bin/'))
+            script.addCommand(new util.CommandBuilder('cp').add("build/${binary}", 'bin/'))
         }
     }
 

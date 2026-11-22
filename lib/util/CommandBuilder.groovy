@@ -1,5 +1,7 @@
+package util
 
 class CommandBuilder {
+    private final Set<String> flags = new HashSet<>()
     private List<String> commandParts = []
 
     /**
@@ -29,17 +31,28 @@ class CommandBuilder {
         return add(*parts)
     }
 
+    /** Claim a long flag for the process, even when its optional input is absent. */
+    CommandBuilder addFlagIf(boolean enabled, String flag, Object... values) {
+        assert flags.add(flag) : "Flag already managed by command: ${flag}"
+        if (enabled) add(flag, *values)
+        return this
+    }
+
+    CommandBuilder addFlag(String flag, Object... values) {
+        return addFlagIf(true, flag, *values)
+    }
+
     /** Forward CLI options using snake_case keys and preserve each argument boundary. */
-    CommandBuilder addOptions(Map options, Collection managed) {
+    CommandBuilder addOptions(Map options) {
         options.each { key, value ->
             assert key instanceof String && key ==~ /[A-Za-z0-9][A-Za-z0-9_]*/ : "Expected a CLI option name: ${key}"
-            assert !managed.contains(key) : "Process manages option: ${key}"
             def flag = '--' + key.replace('_', '-')
+            assert !flags.contains(flag) : "Process manages option: ${key}"
             if (value == true) {
-                add(flag)
+                addFlag(flag)
             } else if (value != null && value != false) {
                 assert value instanceof Number || value instanceof CharSequence : "Expected a scalar for ${flag}"
-                add(flag, value)
+                addFlag(flag, value)
             }
         }
         return this

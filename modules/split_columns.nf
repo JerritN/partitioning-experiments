@@ -16,10 +16,10 @@ process SPLIT_COLUMNS {
     tuple val(key), path('columns/*.txt', arity: '1..*'), emit: columns
 
     script:
-    def split = new CommandBuilder('awk')
+    def split = new util.CommandBuilder('awk')
         .add('NR == 1 { width = NF } NF != width { exit 1 } { for (i = 1; i <= NF; i++) print $i > ("columns/" i ".txt") }', input_file)
 
-    return new ScriptBuilder()
+    return new util.ScriptBuilder()
         .addLine('mkdir -p columns')
         .addCommand(split)
         .build()

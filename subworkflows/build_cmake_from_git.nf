@@ -18,7 +18,7 @@ workflow BUILD_CMAKE_FROM_GIT {
 
     main:
     resolved = requests.map { key, repository, revision, opts ->
-        def commit = GitUtils.resolveCommit(repository, revision)
+        def commit = util.GitUtils.resolveCommit(repository, revision)
         tuple(repository, commit, key, opts)
     }
     checkouts = resolved.map { repository, commit, _key, _opts ->

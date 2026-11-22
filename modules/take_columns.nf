@@ -19,19 +19,19 @@ process TAKE_COLUMNS {
         emit: output
 
     script:
-    def columnsList = CollectionUtils.asList(columns)
+    def columnsList = util.CollectionUtils.asList(columns)
 
     assert columnsList.size() > 0 : "At least one column must be specified"
     assert columnsList.every { column -> column instanceof Integer } : "All columns must be integers"
     assert columnsList.every { column -> column > 0 } : "All columns must be positive integers"
 
-    def command = new CommandBuilder('awk')
+    def command = new util.CommandBuilder('awk')
         .add("{print ${columnsList.collect { column -> "\$${column}" }.join(', ')}}")
         .add(input_file)
         .addUnwrapped('>')
         .add('output.txt')
 
-    return new ScriptBuilder()
+    return new util.ScriptBuilder()
         .addCommand(command)
         .build()
 }

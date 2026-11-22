@@ -10,29 +10,30 @@ params {
     mt_kahypar_revision: String
 }
 
-def prepareTrials(batch, defaults) {
-    batch.requests.collect { trial ->
-        OptionChecks.checkMap(trial.inputs, ['options'], batch.id)
-        def options = trial.inputs.getOrDefault('options', [:])
-        checkInput(options instanceof Map, "Expected an options map for ${batch.id}")
-        trial + [options: defaults + options]
-    }
+def graphFor(batch, run, dataDir) {
+    def where = "${batch.id}.inputs for ${run.choices}"
+    OptionChecks.checkMap(run.inputs, ['path'], where)
+    def name = run.inputs.path
+    assert name instanceof String && name.trim() : "Expected a nonempty graph path at ${where}"
+    def path = dataDir.resolve(name).normalize()
+    assert path.isFile() : "Missing graph at ${where}: ${path}"
+    return [id: name, file: path]
 }
 
-def checkInput(condition, message) {
-    if (!condition) throw new IllegalArgumentException(message)
+def optionsFor(batch, run) {
+    def where = "${batch.id}.inputs for ${run.choices}"
+    OptionChecks.checkMap(run.inputs, ['options'], where)
+    def options = run.inputs.getOrDefault('options', [:])
+    assert options instanceof Map : "Expected an options map at ${where}"
+    return options
 }
 
-def planExperiment(experiment) {
-    OptionChecks.checkMap(experiment, ['name', 'dimensions', 'stages', 'selections'], 'experiment')
-    checkInput(experiment.name instanceof String && experiment.name.trim(), 'Expected an experiment name')
-    def dimensions = LinearExperiment.dimensions(experiment.getOrDefault('dimensions', [:]))
-    def stages = LinearExperiment.stages(experiment.stages, dimensions)
-    def expected = ['metis_graph', 'region_filter', 'mt_kahypar']
-    checkInput(stages*.tool == expected, "Expected stages ${expected}; received ${stages*.tool}")
-    def selections = experiment.getOrDefault('selections', [[:]])
-    LinearExperiment.checkSelections(selections, dimensions)
-    return LinearExperiment.plan(dimensions, stages, selections)
+def partitionOptionsFor(batch, run) {
+    def defaults = [file_format: 'metis', edge_metadata_type: 'natural_edge', c_rating_edge_metadata: 'ignore']
+    def options = defaults + optionsFor(batch, run)
+    assert options.file_format == 'metis' && options.edge_metadata_type == 'natural_edge' :
+        "${batch.id} receives a METIS graph and natural-edge metadata for ${run.choices}"
+    return options
 }
 
 def optionsJson(options) {
@@ -42,25 +43,20 @@ def optionsJson(options) {
 workflow {
     main:
     def experiment = ExperimentFile.read(file(params.experiment, checkIfExists: true))
-    def stages = planExperiment(experiment)
+    def batches = LinearExperiment.plan(experiment)
+    LinearExperiment.verifyStageSequence(batches, ['metis_graph', 'region_filter', 'mt_kahypar'])
+    def (graphStage, filterStage, partitionStage) = batches
     def dataDir = file(params.graph_dir)
 
-    // Resolve and validate selected inputs and tool settings before starting builds.
-    def graphs = stages[0].requests.collectEntries { request ->
-        def opts = request.inputs
-        assert opts.keySet() == ['path'].toSet() && opts.path instanceof String && opts.path.trim() :
-            "Expected a graph path for ${request.choices}"
-        def path = dataDir.resolve(opts.path).normalize()
-        assert path.isFile() : "Missing experiment graph: ${path}"
-        [(request.key): [id: opts.path, file: path]]
+    // Validate resolved named inputs while adapting them to process requests, before starting builds.
+    def graphs = graphStage.requests.collectEntries { run ->
+        [(run.key): graphFor(graphStage, run, dataDir)]
     }
-    def filterTrials = prepareTrials(stages[1], [:])
-    def partitionTrials = prepareTrials(stages[2], [
-        file_format: 'metis', edge_metadata_type: 'natural_edge', c_rating_edge_metadata: 'ignore'
-    ])
-    partitionTrials.each { trial ->
-        checkInput(trial.options.file_format == 'metis' && trial.options.edge_metadata_type == 'natural_edge',
-            'This workflow supplies a METIS graph and natural-edge metadata')
+    def filterTrials = filterStage.requests.collect { run ->
+        run + [options: optionsFor(filterStage, run)]
+    }
+    def partitionTrials = partitionStage.requests.collect { run ->
+        run + [options: partitionOptionsFor(partitionStage, run)]
     }
     def filterByKey = filterTrials.collectEntries { trial -> [(trial.key): trial] }
 

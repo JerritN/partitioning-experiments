@@ -29,6 +29,22 @@ class CommandBuilder {
         return add(*parts)
     }
 
+    /** Forward CLI options using snake_case keys and preserve each argument boundary. */
+    CommandBuilder addOptions(Map options, Collection managed) {
+        options.each { key, value ->
+            assert key instanceof String && key ==~ /[A-Za-z0-9][A-Za-z0-9_]*/ : "Expected a CLI option name: ${key}"
+            assert !managed.contains(key) : "Process manages option: ${key}"
+            def flag = '--' + key.replace('_', '-')
+            if (value == true) {
+                add(flag)
+            } else if (value != null && value != false) {
+                assert value instanceof Number || value instanceof CharSequence : "Expected a scalar for ${flag}"
+                add(flag, value)
+            }
+        }
+        return this
+    }
+
     CommandBuilder addUnwrapped(Object... parts) {
         if (parts.length == 0) return this
 

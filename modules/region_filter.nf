@@ -8,6 +8,8 @@
  * `graph`: Input graph in DIMACS (`.gr`) or METIS format.  
  * `opts`: Map of filtering parameters.  
  *
+ * Scalar snake_case options are forwarded as long CLI flags. Boolean true enables a switch.  
+ *
  * **Required parameters (`opts`)**  
  * Exactly one of `U` or `k` must be specified.  
  * `U`: Maximum fragment size.  
@@ -78,44 +80,16 @@ process REGION_FILTER {
         emit: log
 
     script:
-    assert (opts.U != null) != (opts.k != null) :
-        "RegionFilter requires exactly one of U or k"
-
-    assert opts.eps == null || opts.k != null :
-        "RegionFilter: eps requires k"
-
-    assert opts.no_fallback != true || opts.closed == true :
-        "RegionFilter: no_fallback requires closed"
-
     def command = new CommandBuilder("./${executable}")
-        .addIf(opts.U != null, '--U', opts.U)
-        .addIf(opts.k != null, '--k', opts.k)
         .add('--graph', graph)
         .add('--dump-fragment-graph', 'fragments.graph')
         .add('--dump-partition', 'fragment_mapping.txt')
         .add('--dump-regions', 'regions.txt')
         .add('--dump-cut-edges', 'cut_edges.raw.txt')
-        .addIf(opts.eps != null, '--eps', opts.eps)
-        .addIf(opts.region_factor != null, '--region-factor', opts.region_factor)
-        .addIf(opts.regions != null, '--regions', opts.regions)
-        .addIf(opts.lloyd != null, '--lloyd', opts.lloyd)
-        .addIf(opts.terminal_fraction != null, '--terminal-fraction', opts.terminal_fraction)
-        .addIf(opts.margin != null, '--margin', opts.margin)
-        .addIf(opts.terminals != null, '--terminals', opts.terminals)
-        .addIf(opts.ball_fraction != null, '--ball-fraction', opts.ball_fraction)
-        .addIf(opts.rounds != null, '--rounds', opts.rounds)
-        .addIf(opts.min_rounds != null, '--min-rounds', opts.min_rounds)
-        .addIf(opts.centers != null, '--centers', opts.centers)
-        .addIf(opts.spread_fraction != null, '--spread-fraction', opts.spread_fraction)
-        .addIf(opts.cut_side != null, '--cut-side', opts.cut_side)
-        .addIf(opts.tau != null, '--tau', opts.tau)
-        .addIf(opts.seed != null, '--seed', opts.seed)
         .addIf(opts.dump_pairs != null, '--dump-pairs', opts.dump_pairs, 'raw_pairs/pair')
-        .addIf(opts.pin_ring == true, '--pin-ring')
-        .addIf(opts.closed == true, '--closed')
-        .addIf(opts.no_fallback == true, '--no-fallback')
-        .addIf(opts.no_tiny_cuts == true, '--no-tiny-cuts')
-        .addIf(opts.verbose == true, '--verbose')
+
+    command.addOptions(opts.findAll { name, value -> !(name in ['region_factors', 'dump_pairs']) },
+        ['graph', 'dump_fragment_graph', 'dump_partition', 'dump_regions', 'dump_cut_edges'])
 
     // Accept a list or a comma-separated string.
     if (opts.region_factors != null) {

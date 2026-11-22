@@ -12,27 +12,26 @@ params {
 
 def resolveGraphInput(run, graphDir, stageLabel) {
     def where = "${stageLabel}.inputs for ${run.choices}"
-    MapChecks.requireOnlyKeys(run.inputs, ['path'], where)
+    util.Assertions.assertOnlyKeys(run.inputs, ['path'], where)
     def name = run.inputs.path
-    assert name instanceof String && name.trim() : "Expected a nonempty graph path at ${where}"
+    util.Assertions.assertThat(name instanceof String && name.trim(), "Expected a nonempty graph path at ${where}")
     def path = graphDir.resolve(name).normalize()
-    assert path.isFile() : "Missing graph at ${where}: ${path}"
+    util.Assertions.assertThat(path.isFile(), "Missing graph at ${where}: ${path}")
     return [id: name, file: path]
 }
 
 def readToolOptions(run, stageLabel) {
     def where = "${stageLabel}.inputs for ${run.choices}"
-    MapChecks.requireOnlyKeys(run.inputs, ['options'], where)
+    util.Assertions.assertOnlyKeys(run.inputs, ['options'], where)
     def options = run.inputs.getOrDefault('options', [:])
-    assert options instanceof Map : "Expected an options map at ${where}"
+    util.Assertions.assertThat(options instanceof Map, "Expected an options map at ${where}")
     return options
 }
 
 def preparePartitionerOptions(run, stageLabel) {
     def defaults = [file_format: 'metis', edge_metadata_type: 'natural_edge', c_rating_edge_metadata: 'ignore']
     def options = defaults + readToolOptions(run, stageLabel)
-    assert options.file_format == 'metis' && options.edge_metadata_type == 'natural_edge' :
-        "${stageLabel} receives a METIS graph and natural-edge metadata for ${run.choices}"
+    util.Assertions.assertThat(options.file_format == 'metis' && options.edge_metadata_type == 'natural_edge', "${stageLabel} receives a METIS graph and natural-edge metadata for ${run.choices}")
     return options
 }
 
@@ -42,11 +41,11 @@ def sortedJson(fields) {
 
 workflow {
     main:
-    def document = ExperimentFile.read(file(params.experiment, checkIfExists: true))
-    def definition = ExperimentParser.parse(document)
-    def experiment = ExperimentPlanner.plan(definition)
-    experiment.verifyStageSequence(['metis_graph', 'region_filter', 'mt_kahypar'])
-    def (graphStage, filterStage, partitionStage) = experiment.stages
+    def document = experiment.ExperimentFile.read(file(params.experiment, checkIfExists: true))
+    def definition = experiment.ExperimentParser.parse(document)
+    def experimentPlan = experiment.ExperimentPlanner.plan(definition)
+    experimentPlan.verifyStageSequence(['metis_graph', 'region_filter', 'mt_kahypar'])
+    def (graphStage, filterStage, partitionStage) = experimentPlan.stages
     def graphDir = file(params.graph_dir)
 
     // Validate resolved named inputs while adapting them to process requests, before starting builds.
@@ -67,16 +66,16 @@ workflow {
     ])
 
     def filterRequests = channel.fromList(filterStage.runs).map { run ->
-        tuple(run.key, graphs[run.parentKey].file, filterOptions[run.key])
+        tuple(run.key.toTaskKey(), graphs[run.parentKey].file, filterOptions[run.key])
     }
     def partitionRunChannel = channel.fromList(partitionStage.runs)
-    def partitionRequests = partitionRunChannel.map { run -> tuple(run.key, run.parentKey, partitionOptions[run.key]) }
+    def partitionRequests = partitionRunChannel.map { run -> tuple(run.key.toTaskKey(), run.parentKey.toTaskKey(), partitionOptions[run.key]) }
     def metadata = partitionRunChannel.map { run ->
         def filter = filterRunByKey[run.parentKey]
         def filterOpts = filterOptions[filter.key]
         def partitionOpts = partitionOptions[run.key]
         def fields = [
-            experiment_name: experiment.name,
+            experiment_name: experimentPlan.name,
             graph_id: graphs[filter.parentKey].id,
             rating_policy: partitionOpts.c_rating_edge_metadata,
             dimension_choices: sortedJson(run.choices),
@@ -85,7 +84,7 @@ workflow {
         ]
         if (filterOpts.k != null) fields.region_filter_k = filterOpts.k
         if (filterOpts.U != null) fields.region_filter_u = filterOpts.U
-        tuple(run.key, fields)
+        tuple(run.key.toTaskKey(), fields)
     }
     BENCHMARK_PARTITIONS(filterRequests, partitionRequests, metadata,
         BUILD_PARTITIONING_TOOLS.out.region_filter, BUILD_PARTITIONING_TOOLS.out.mt_kahypar)

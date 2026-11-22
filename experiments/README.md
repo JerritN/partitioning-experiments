@@ -45,17 +45,17 @@ This runs both policies for the small size and only `ignore` for the large size.
 The workflow reads the experiment in three steps:
 
 ```groovy
-def document = ExperimentFile.read(path)
-def definition = ExperimentParser.parse(document)
-def experiment = ExperimentPlanner.plan(definition)
-experiment.verifyStageSequence(['metis_graph', 'region_filter', 'mt_kahypar'])
+def document = experiment.ExperimentFile.read(path)
+def definition = experiment.ExperimentParser.parse(document)
+def plan = experiment.ExperimentPlanner.plan(definition)
+plan.verifyStageSequence(['metis_graph', 'region_filter', 'mt_kahypar'])
 ```
 
-`ExperimentFile` decodes YAML. `ExperimentParser` translates shorthand choices and reference strings into an `ExperimentDefinition` containing ordered `StageDefinition` objects. References in their input templates are `DimensionReference` values. Code can also construct these definitions directly using normalized choice maps. The definition constructor checks shared constraints, including explicit stage IDs, dimension use and selection labels.
+`ExperimentFile` decodes YAML. `ExperimentParser` translates shorthand choices and reference strings into an `ExperimentDefinition` containing ordered `StageDefinition` objects. References in their input templates are `DimensionReference` values. Code can also construct these definitions directly using normalized choice maps. Definitions hold data, including each stage’s explicit `vary` list. Before expansion, the planner derives each stage’s used dimensions and checks stage IDs, references and selection labels.
 
 `ExperimentPlanner` expands that definition into an `Experiment` with a name and ordered `stages`. Each `PlannedStage` contains `PlannedRun` objects. Planning works entirely in memory. The workflow validates the supported stage sequence and adapts each run’s inputs to process requests.
 
-Each planned stage has `tool`, `id` (defaults to the tool name), and `runs`. Each run contains resolved `inputs`, inherited and newly bound choice labels in `choices`, an opaque `key`, and the immediate predecessor's `parentKey` (null for the first stage). Join runs to outputs by those keys. Each upstream run appears once even when several children share it. The executing workflow connects named inputs and resolves graph paths before launching tools.
+Each planned stage has `tool`, `id` (defaults to the tool name), and `runs`. Each run contains resolved `inputs`, inherited and newly bound choice labels in `choices`, an opaque `key`, and the immediate predecessor's `parentKey` (null for the first stage). Compare opaque `RunKey` values when linking runs in memory. Use `key.toTaskKey()` when constructing Nextflow tuples so cached tasks can restore their keys on resume. Each upstream run appears once even when several children share it. The executing workflow connects named inputs and resolves graph paths before launching tools.
 
 ## RegionFilter integration
 

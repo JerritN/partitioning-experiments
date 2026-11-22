@@ -10,16 +10,16 @@ workflow {
             [tool: 'custom', vary: ['run'], inputs: [nested: ['${size.blocks}', '${policy}']]]]
     ]
     def plan = LinearExperiment.plan(experiment)
-    assert plan*.requests*.size() == [2,4,24]
-    assert plan.first().requests.every { it.parentKey == null }
-    assert plan.last().requests.every { trial ->
-        def parent = plan[1].requests.find { it.key == trial.parentKey }
-        parent && parent.inputs.second.blocks == 2 * parent.inputs.first.k && trial.inputs.nested == [2 * parent.inputs.first.k, trial.choices.policy]
+    assert plan*.runs*.size() == [2,4,24]
+    assert plan.first().runs.every { it.parentKey == null }
+    assert plan.last().runs.every { run ->
+        def parent = plan[1].runs.find { it.key == run.parentKey }
+        parent && parent.inputs.second.blocks == 2 * parent.inputs.first.k && run.inputs.nested == [2 * parent.inputs.first.k, run.choices.policy]
     }
     def selectors = [[graph: 'a', policy: false], [graph: 'a', size: 's', policy: false]]
     def selected = LinearExperiment.plan(experiment + [selections: selectors])
-    assert selected*.requests*.size() == [1,2,6]
-    assert selected.last().requests*.key.toSet().size() == 6
+    assert selected*.runs*.size() == [1,2,6]
+    assert selected.last().runs*.key.toSet().size() == 6
     def stages = experiment.stages.collect { it + [:] }
     stages[1].id = 'filter'
     stages[1].vary = ['run']
@@ -31,9 +31,9 @@ workflow {
     } catch (IllegalArgumentException expected) {
         assert expected.message.contains('received [input, custom, custom]')
     }
-    assert paired*.requests*.size() == [2,12,24]
-    assert paired.last().requests*.key.toSet() == plan.last().requests*.key.toSet()
-    assert LinearExperiment.plan([name:'fixed', stages:[[tool:'input']]])[0].requests.size() == 1
+    assert paired*.runs*.size() == [2,12,24]
+    assert paired.last().runs*.key.toSet() == plan.last().runs*.key.toSet()
+    assert LinearExperiment.plan([name:'fixed', stages:[[tool:'input']]])[0].runs.size() == 1
     def bad = [experiment + [selections: [[graph:'missing']]],
         experiment + [stages: [[tool:'input', inputs:[x:'${missing}']]]],
         [name:'bad', stages:[[tool:'input', inputs:[x:'${size.other}']]],

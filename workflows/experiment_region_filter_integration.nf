@@ -42,7 +42,7 @@ def sortedJson(fields) {
 
 workflow {
     main:
-    def experimentPath = "${params.project_path}/experiments${params.experiment}"
+    def experimentPath = "${params.project_path}/experiments/${params.experiment}"
     def experimentFile = file(experimentPath, checkIfExists: true)
     def document = experiment.ExperimentFile.read(experimentFile)
     def definition = experiment.ExperimentParser.parse(document)

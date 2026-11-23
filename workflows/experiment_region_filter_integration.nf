@@ -3,8 +3,9 @@ include { BENCHMARK_PARTITIONS } from '../subworkflows/benchmark_partitions.nf'
 
 params {
     experiment: String
-    repository: String = "${params.project_path}/mt-kahypar"
-    graph_dir: String = "${params.project_path}/data"
+    repository: String = "${params.repository_dir}/mt-kahypar"
+    graph_dir: String
+    project_path: String
     build_threads: Integer
     region_filter_revision: String
     mt_kahypar_revision: String
@@ -41,7 +42,9 @@ def sortedJson(fields) {
 
 workflow {
     main:
-    def document = experiment.ExperimentFile.read(file(params.experiment, checkIfExists: true))
+    def experimentPath = "${params.project_path}/experiments${params.experiment}"
+    def experimentFile = file(experimentPath, checkIfExists: true)
+    def document = experiment.ExperimentFile.read(experimentFile)
     def definition = experiment.ExperimentParser.parse(document)
     def experimentPlan = experiment.ExperimentPlanner.plan(definition)
     experimentPlan.verifyStageSequence(['metis_graph', 'region_filter', 'mt_kahypar'])

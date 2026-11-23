@@ -5,11 +5,11 @@ include { APPEND_TO_ROWS } from '../modules/append_to_rows.nf'
 include { INDEX_ROWS } from '../modules/index_rows.nf'
 
 params {
-    repository: String = "${params.project_path}/mt-kahypar"
+    repository: String = "${params.repository_dir}/mt-kahypar"
     build_threads: Integer
     region_filter_revision: String
     mt_kahypar_revision: String
-    graph_dir: String = "${params.project_path}/data"
+    graph_dir: String
     region_filter_k: Integer = 8
     mt_kahypar_threads: Integer = 8
     mt_kahypar_blocks: Integer = 8

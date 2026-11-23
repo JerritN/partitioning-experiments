@@ -8,10 +8,10 @@ include { APPEND_TO_ROWS } from '../modules/append_to_rows.nf'
 include { REGION_FILTER } from '../modules/region_filter.nf'
 
 params {
-    repository: String = "${params.project_path}/mt-kahypar"
+    repository: String = "${params.repository_dir}/mt-kahypar"
     build_threads: Integer
     region_filter_revision: String
-    graph_dir: String = "${params.project_path}/data"
+    graph_dir: String
     region_filter_u: Integer = 1000
     region_filter_rounds: Integer = 1
 }

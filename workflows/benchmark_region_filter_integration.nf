@@ -2,11 +2,11 @@ include { BUILD_PARTITIONING_TOOLS } from '../subworkflows/build_partitioning_to
 include { BENCHMARK_PARTITIONS } from '../subworkflows/benchmark_partitions.nf'
 
 params {
-    repository: String = "${params.project_path}/mt-kahypar"
+    repository: String = "${params.repository_dir}/mt-kahypar"
     build_threads: Integer
     region_filter_revision: String
     mt_kahypar_revision: String
-    graph_dir: String = "${params.project_path}/data"
+    graph_dir: String
     region_filter_k: Integer = 8
     filter_repetitions: Integer = 1
     repetitions: Integer = 1

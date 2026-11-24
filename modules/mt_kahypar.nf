@@ -90,7 +90,7 @@ process MT_KAHYPAR {
     }
 
     def handled = booleanValues.keySet() + ['threads']
-    command.addOptions(opts.findAll { name, value -> !handled.contains(name) })
+    command.addOptions(opts.findAll { name, _value -> !handled.contains(name) })
 
     def script = new util.ScriptBuilder()
         .addLine('mkdir -p partitions')

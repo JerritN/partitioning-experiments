@@ -1,0 +1,37 @@
+name: compare-rating-policies
+
+dimensions:
+  graph:
+    luxembourg: luxembourg.osm.graph
+    belgium: belgium.osm.graph
+    netherlands: netherlands.osm.graph
+    italy: italy.osm.graph
+  size:
+    eight: {filter_k: 8, blocks: 8}
+    thirty_two: {filter_k: 32, blocks: 32}
+  policy:
+    baseline: ignore
+    skip: skip_natural_edge
+    zero: natural_edge_contribute_zero
+    negative: natural_edge_contribute_negative
+  filter_seed: [1,2,3,4,5]
+  partition_seed: [1,2,3,4,5]
+
+stages:
+  - tool: metis_graph
+    inputs: {path: "${graph}"}
+  - tool: region_filter
+    inputs:
+      options: 
+        k: "${size.filter_k}"
+        seed: "${filter_seed}"
+  - tool: mt_kahypar
+    inputs:
+      options:
+        blocks: "${size.blocks}"
+        c_rating_edge_metadata: "${policy}"
+        epsilon: 0.03
+        objective: cut
+        preset_type: default
+        threads: 4
+        seed: "${partition_seed}"

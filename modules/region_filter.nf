@@ -88,7 +88,7 @@ process REGION_FILTER {
         .addFlag('--dump-cut-edges', 'cut_edges.raw.txt')
         .addFlagIf(opts.dump_pairs != null, '--dump-pairs', opts.dump_pairs, 'raw_pairs/pair')
 
-    command.addOptions(opts.findAll { name, value -> !(name in ['region_factors', 'dump_pairs']) })
+    command.addOptions(opts.findAll { name, _value -> !(name in ['region_factors', 'dump_pairs']) })
 
     // Accept a list or a comma-separated string.
     if (opts.region_factors != null) {
